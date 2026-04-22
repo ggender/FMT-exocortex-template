@@ -7,7 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/User/IWE/FMT-exocortex-template/roles/extractor/scripts/extractor.sh</string>
+        <string>/Users/User/dev/IWE/FMT-exocortex-template/roles/extractor/scripts/extractor.sh</string>
         <string>inbox-check</string>
     </array>
 

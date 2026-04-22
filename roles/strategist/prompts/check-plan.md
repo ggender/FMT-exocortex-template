@@ -4,7 +4,7 @@
 
 ## Контекст
 
-- Планы: /Users/User/IWE/DS-strategy/current/
+- Планы: /Users/User/dev/IWE/DS-strategy/current/
 
 ## Алгоритм
 

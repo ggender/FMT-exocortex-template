@@ -78,7 +78,7 @@
 
 Политика: ≤11 файлов. Справочники ≤100 строк. Протоколы ≤150. MEMORY.md ≤100 строк.
 Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при создании), `superseded_by: <файл>` (при устаревании). Подробности → `protocol-work.md § 2`.
-Рабочая директория: `/Users/User/IWE/` (не из sub-директорий). `/Users/User/IWE/memory/` = симлинк на auto-memory.
+Рабочая директория: `/Users/User/dev/IWE/` (не из sub-директорий). `/Users/User/dev/IWE/memory/` = симлинк на auto-memory.
 
 ## 5. АрхГейт — ОБЯЗАТЕЛЬНАЯ оценка
 
@@ -138,7 +138,7 @@ Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при со�
 
 ### Именование
 
-- `/Users/User/IWE/` — рабочая директория
+- `/Users/User/dev/IWE/` — рабочая директория
 
 ### Read-only репо
 

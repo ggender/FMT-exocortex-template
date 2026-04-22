@@ -156,7 +156,7 @@ review: weekly (каждая сессия стратегирования)
 
 ### Текущие фазы (MAPSTRATEGIC)
 
-> Агрегируется из `/Users/User/IWE/*/MAPSTRATEGIC.md` (Стратег, session-prep Пн 04:00).
+> Агрегируется из `/Users/User/dev/IWE/*/MAPSTRATEGIC.md` (Стратег, session-prep Пн 04:00).
 
 | Система | Фаза | Следующий шаг |
 |---------|------|---------------|

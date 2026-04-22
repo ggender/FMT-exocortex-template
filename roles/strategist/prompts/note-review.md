@@ -3,12 +3,12 @@
 
 ## Контекст
 
-- **Заметки:** /Users/User/IWE/DS-strategy/inbox/[fleeting-notes.md](https://github.com/ggender/DS-strategy/blob/main/inbox/fleeting-notes.md)
-- **НЭП:** /Users/User/IWE/DS-strategy/docs/Dissatisfactions.md
-- **Стратегия:** /Users/User/IWE/DS-strategy/docs/Strategy.md
-- **План недели:** /Users/User/IWE/DS-strategy/current/WeekPlan W*.md
-- **Inbox Экстрактора:** /Users/User/IWE/DS-strategy/inbox/captures.md
-- **MEMORY:** ~/.claude/projects/-Users-User-IWE/memory/MEMORY.md
+- **Заметки:** /Users/User/dev/IWE/DS-strategy/inbox/[fleeting-notes.md](https://github.com/ggender/DS-strategy/blob/main/inbox/fleeting-notes.md)
+- **НЭП:** /Users/User/dev/IWE/DS-strategy/docs/Dissatisfactions.md
+- **Стратегия:** /Users/User/dev/IWE/DS-strategy/docs/Strategy.md
+- **План недели:** /Users/User/dev/IWE/DS-strategy/current/WeekPlan W*.md
+- **Inbox Экстрактора:** /Users/User/dev/IWE/DS-strategy/inbox/captures.md
+- **MEMORY:** ~/.claude/projects/-Users-User-dev-IWE/memory/MEMORY.md
 
 ## Предусловие
 
@@ -47,7 +47,7 @@
 - `DS-strategy/current/WeekPlan W*.md` — РП и приоритеты недели
 - `DS-strategy/docs/Strategy.md` — фокусы года, приоритеты месяца
 - MEMORY.md — статусы РП
-- (опционально, если настроены агенты-сборщики QA) Структурированные QA-отчёты в `/Users/User/IWE/<agent-workspace>/<scheduler>/<reports>/` — последний по дате: замечания (✏️) и urgent (high/critical) в начале файла. Кластеры (≥3 в одном кластере) → пометить. Если агентов нет — пропустить шаг.
+- (опционально, если настроены агенты-сборщики QA) Структурированные QA-отчёты в `/Users/User/dev/IWE/<agent-workspace>/<scheduler>/<reports>/` — последний по дате: замечания (✏️) и urgent (high/critical) в начале файла. Кластеры (≥3 в одном кластере) → пометить. Если агентов нет — пропустить шаг.
 
 #### 3. Классифицировать каждую заметку
 
@@ -73,7 +73,7 @@
 - **Личные данные → personal/:** контакт → `personal/contacts.md`, аккаунт/URL → `personal/accounts.md`, токен/пароль → `personal/secrets.md`, прочее → `personal/reference.md`
 
 **Проверка актуальности (обязательно перед классификацией):**
-- Сверь заметку с коммитами за сегодня (`git log --since="00:00" --all --oneline` по всем /Users/User/IWE/ репо) и текущим WeekPlan
+- Сверь заметку с коммитами за сегодня (`git log --since="00:00" --all --oneline` по всем /Users/User/dev/IWE/ репо) и текущим WeekPlan
 - Если задача из заметки **уже сделана** (есть коммит или РП done) → Шум (зачеркнуть), не тянуть в план
 - Если проблема из заметки **уже решена** → Шум
 - Если заметка ссылается на ситуацию, которая **изменилась** за день → оценить с учётом нового контекста
