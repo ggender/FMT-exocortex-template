@@ -23,6 +23,7 @@
 | **Сессия** | `protocol-open.md § Сессия` (любое задание) | `protocol-work.md` | `/run-protocol close` |
 | **День** | `/day-open` («открывай») | Между Day Open и Day Close | `/run-protocol day-close` |
 | **Неделя** | — | — | `/run-protocol week-close` |
+| **Месяц** | — | Между Month Close предыдущего и текущего | `/month-close` (первый Пн месяца, до Strategy Session) |
 
 ### Блокирующие правила
 
@@ -31,6 +32,7 @@
 3. **Close:** Триггер Закрытия → протокол Закрытия → выполнить.
 4. **Чеклист-верификация (Haiku R23):** Quick Close и Day Close — sub-agent Haiku R23 (context isolation). Проверяет формальное соответствие чеклисту (все ли пункты закрыты, есть ли коммит, обновлён ли MEMORY.md), но не оценивает качество результата. Исключения: сессия ≤15 мин или без изменений файлов.
 5. **Pull-on-Touch:** `git pull --rebase` при первом изменении в репо за сессию (не перед каждым коммитом). Без Obsidian: см. §9.
+6. **Автономность (БЛОКИРУЮЩЕЕ):** НЕ спрашивать подтверждения — ни «добавить?», ни «продолжить?», ни «записать?», ни «хотите...?». Задание → выполни → отчитайся. Не заканчивать сообщение вопросом. Очевидные следствия (синхронизация, обновление связанных файлов) — делать сразу. Факт, проверяемый самостоятельно (grep, БД, конфиг), — проверять, а не спрашивать. Исключение: необратимое разрушительное действие (force push в прод, удаление данных без бэкапа). Отклонение инструмента ≠ запрет навсегда — попробовать другой путь. Детали и журнал нарушений → `memory/feedback_behaviour.md` Правило 1. Подтверждено P5-детектором: апрель 2026 — 853 срабатывания в 104 сессиях; причина — Правило 1 жило только в memory, не в горячем контексте.
 
 ### Протокол Работы (полный → `memory/protocol-work.md`)
 
@@ -76,13 +78,13 @@
 | FPF/SOTA/Роли | `memory/fpf-reference.md`, `memory/sota-reference.md`, `memory/roles.md` |
 | Документ/чеклист | `memory/checklists.md` |
 
-Политика: ≤11 файлов. Справочники ≤100 строк. Протоколы ≤150. MEMORY.md ≤100 строк.
+Политика: ≤11 файлов. **Горячие** (читаются каждую сессию: CLAUDE.md, MEMORY.md, distinctions.md, formatting.md): ≤100 строк. Протоколы (lazy, по триггеру): ≤150. **Lazy-reference** (по ссылке из MEMORY.md, не каждую сессию — feedback_*, templates-*, reference_*): без жёсткого лимита, > 300 строк → пересмотреть.
 Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при создании), `superseded_by: <файл>` (при устаревании). Подробности → `protocol-work.md § 2`.
 Рабочая директория: `/Users/User/dev/IWE/` (не из sub-директорий). `/Users/User/dev/IWE/memory/` = симлинк на auto-memory.
 
 ## 5. АрхГейт — ОБЯЗАТЕЛЬНАЯ оценка
 
-> **БЛОКИРУЮЩЕЕ.** Архитектурное решение → `/archgate` → принципы (DP.ARCH.001 §7) → таблица ЭМОГССБ → порог ≥8.
+> **БЛОКИРУЮЩЕЕ.** Архитектурное решение → `/archgate` → принципы (DP.ARCH.001 §7) → профиль ЭМОГССБ (✅/⚠️/❌) → conjunctive screening (см. `.claude/skills/archgate/SKILL.md`). Без агрегатного балла — `feedback_decision_gates.md`.
 > Чеклист современности: (1) Context Engineering SOTA.002, (2) DDD Strategic SOTA.001, (3) Coupling Model SOTA.011.
 
 ## 6. Форматирование → `.claude/rules/formatting.md`
@@ -134,11 +136,16 @@ Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при со�
 ### Различения (авторские)
 
 > Хранятся в `.claude/rules/distinctions.md` в зоне AUTHOR-ONLY — не затираются при `update.sh`.
-> Добавляйте сюда свои авторские различения (пара терминов, путаница которых ведёт к ошибке).
+
 
 ### Именование
 
+<<<<<<< /var/folders/8t/430hnm5x1w96tmplfqcdtr240000gn/T/tmp.lCcizE1IqS/claude-merge.md
 - `/Users/User/dev/IWE/` — рабочая директория
+=======
+- `DS-strategy` (не `DS-strategy`) — личный governance-хаб
+- `/Users/User/IWE/` — рабочая директория
+>>>>>>> /var/folders/8t/430hnm5x1w96tmplfqcdtr240000gn/T/tmp.lCcizE1IqS/files/CLAUDE.md
 
 ### Read-only репо
 
