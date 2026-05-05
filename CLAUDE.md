@@ -99,7 +99,7 @@
 
 Политика: ≤11 файлов. **Горячие** (читаются каждую сессию: CLAUDE.md, MEMORY.md, distinctions.md, formatting.md): ≤100 строк. Протоколы (lazy, по триггеру): ≤150. **Lazy-reference** (по ссылке из MEMORY.md, не каждую сессию — feedback_*, templates-*, reference_*): без жёсткого лимита, > 300 строк → пересмотреть.
 Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при создании), `superseded_by: <файл>` (при устаревании). Подробности → `protocol-work.md § 2`.
-Рабочая директория: `/Users/User/dev/IWE/` (не из sub-директорий). `/Users/User/dev/IWE/memory/` = симлинк на auto-memory.
+Рабочая директория: `/Users/User/IWE/` (не из sub-директорий). `/Users/User/IWE/memory/` = симлинк на auto-memory.
 
 ## 5. АрхГейт — ОБЯЗАТЕЛЬНАЯ оценка
 
@@ -159,12 +159,8 @@ Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при со�
 
 ### Именование
 
-<<<<<<< /var/folders/8t/430hnm5x1w96tmplfqcdtr240000gn/T/tmp.lCcizE1IqS/claude-merge.md
-- `/Users/User/dev/IWE/` — рабочая директория
-=======
-- `DS-strategy` (не `DS-strategy`) — личный governance-хаб
+- `DS-strategy` — личный governance-хаб
 - `/Users/User/IWE/` — рабочая директория
->>>>>>> /var/folders/8t/430hnm5x1w96tmplfqcdtr240000gn/T/tmp.lCcizE1IqS/files/CLAUDE.md
 
 ### Read-only репо
 
