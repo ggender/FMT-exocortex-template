@@ -3,11 +3,11 @@
 
 ## Контекст
 
-- **HUB (личные планы):** /Users/User/dev/IWE/DS-strategy/current/
-- **Документы стратегии:** /Users/User/dev/IWE/DS-strategy/docs/ (Strategy.md, Dissatisfactions.md, Session Agenda.md)
-- **Inbox:** /Users/User/dev/IWE/DS-strategy/inbox/
-- **SPOKE (планы репо):** /Users/User/dev/IWE/*/WORKPLAN.md
-- **MEMORY:** ~/.claude/projects/-Users-User-dev-IWE/memory/MEMORY.md
+- **HUB (личные планы):** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/
+- **Документы стратегии:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/ (Strategy.md, Dissatisfactions.md, Session Agenda.md)
+- **Inbox:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/
+- **SPOKE (планы репо):** {{WORKSPACE_DIR}}/*/WORKPLAN.md
+- **MEMORY:** ~/.claude/projects/{{CLAUDE_PROJECT_SLUG}}/memory/MEMORY.md
 
 ## Предусловие
 
@@ -18,10 +18,21 @@
 
 > Интерактивная сессия. Пользователь управляет через Claude Code.
 
+#### 0. Если первая сессия месяца — прочитать архив прошлого месяца (БЛОКИРУЮЩЕЕ)
+
+- Проверь: сегодня — первая Strategy Session в текущем месяце? (Признак: дата сессии ≤7 числа месяца И в `{{GOVERNANCE_REPO}}/sessions/` нет записи Strategy Session с этого месяца)
+- Если да:
+  1. Найди последний `{{GOVERNANCE_REPO}}/archive/MonthClose YYYY-MM.md` (за прошлый месяц)
+  2. Прочитай ОБЯЗАТЕЛЬНО ДО шага 1: мультипликатор, фаза, калибр, ревизия проектов, инсайты решений, R-вопросник, carry-over
+  3. Прочитай `{{GOVERNANCE_REPO}}/archive/multiplier-trend.md` (если есть) для динамики
+  4. Используй эти данные как контекст при стратегической сверке (шаг 5) и формировании плана (шаг 6)
+- Если нет (вторая+ сессия месяца) — пропусти, переходи к шагу 1
+
 #### 1. Открытие сессии
 
-- Найди `WeekPlan W*.md` со `status: draft` в `DS-strategy/current/`
+- Найди `WeekPlan W*.md` со `status: draft` в `{{GOVERNANCE_REPO}}/current/`
 - Покажи пользователю краткую сводку: повестка, ключевые вопросы, carry-over
+- Если сегодня первая сессия месяца — также упомяни ключевые цифры из MonthClose (мультипликатор, фаза, ✅/🔄 R)
 - Спроси: «Начнём по повестке или есть срочные вопросы?»
 
 #### 2. Ревью прошлой недели
@@ -45,6 +56,7 @@
 #### 5. Стратегическая сверка
 
 - Пройди блок «Стратегическая сверка» из повестки
+- **Если первая сессия месяца:** сверь фокус новой стратегии с данными MonthClose (мультипликатор, фаза, итоги R, инсайты решений) — что подтвердилось, что отвергнуто, что перенеслось
 - Обсуди расхождения между стратегией и текущими РП
 - Корректируй Strategy.md по решениям пользователя
 
@@ -68,6 +80,6 @@
 - **ОБЯЗАТЕЛЬНО:** Если добавлена работа, не отражённая в Strategy.md → обнови Strategy.md (приоритеты месяца, фазы, Q1 результаты)
 - **ОБЯЗАТЕЛЬНО:** Очисти обработанные из fleeting-notes.md и inbox/
 - **ОБЯЗАТЕЛЬНО:** Обратная синхронизация MAPSTRATEGIC.md — если элемент из MAPSTRATEGIC взят в работу (создан РП) → обнови статус фазы в `<repo>/MAPSTRATEGIC.md` (пометь как in-progress, добавь ссылку на РП). Если фаза завершена (РП done) → пометь как done.
-- Закоммить изменения в DS-strategy и затронутых репо
+- Закоммить изменения в {{GOVERNANCE_REPO}} и затронутых репо
 
 **Результат:** утверждённый WeekPlan W{N} (`status: confirmed`), обновлённые Strategy.md, WORKPLAN.md, MEMORY.md, MAPSTRATEGIC.md, очищенный inbox.

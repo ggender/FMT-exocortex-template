@@ -20,14 +20,17 @@ Day Close = протокол. Исполнять ТОЛЬКО пошагово �
 ## Алгоритм
 
 ### 0. Extensions (before)
-Проверить: `ls extensions/day-close.before.md`. Если существует → `Read` → выполнить как первые шаги.
+Загрузить: `bash .claude/scripts/load-extensions.sh day-close before`. Exit 0 → `Read` каждый файл из вывода (alphabetic) → выполнить как первые шаги. Exit 1 → пропустить. Поддерживает `extensions/day-close.before.md` И `extensions/day-close.before.<suffix>.md`.
 
 ### 1. Сбор данных
 
 ```bash
-for repo in $(ls /Users/User/IWE/); do
-  if [ -d /Users/User/IWE/$repo/.git ]; then
-    commits=$(git -C /Users/User/IWE/$repo log --since="today 00:00" --oneline --no-merges 2>/dev/null)
+for repo in $(ls {{HOME_DIR}}/IWE/); do
+  if [ -d {{HOME_DIR}}/IWE/$repo/.git ]; then
+    commits=$(git -C {{HOME_DIR}}/IWE/$repo log --since="today 00:00" --oneline --no-merges 2>/dev/null \
+      | grep -vE "^(docs|chore|ci|style|perf|test)(\\(|:| )" \
+      | grep -vE "memory/|\.claude/rules/|template-sync|backup|reindex" \
+      || true)
     [ -n "$commits" ] && echo "=== $repo ===" && echo "$commits"
   fi
 done
@@ -37,17 +40,17 @@ done
 
 ### 2. Governance batch
 
-**2a.** Обновить WeekPlan (`DS-strategy/current/Plan W{N}...`): статусы РП. **Grep по номеру РП** — обновить ВСЕ упоминания.
+**2a.** Обновить WeekPlan (`{{GOVERNANCE_REPO}}/current/Plan W{N}...`): статусы РП. **Grep по номеру РП** — обновить ВСЕ упоминания.
 
-**2b.** Обновить DayPlan `DS-strategy/current/DayPlan YYYY-MM-DD.md`: статусы ВСЕХ строк (РП + ad-hoc). Done → зачеркнуть.
+**2b.** Обновить DayPlan `{{GOVERNANCE_REPO}}/current/DayPlan YYYY-MM-DD.md`: статусы ВСЕХ строк (РП + ad-hoc). Done → зачеркнуть.
 
-**2c.** Обновить `DS-strategy/docs/WP-REGISTRY.md`: статусы + даты.
+**2c.** Обновить `{{GOVERNANCE_REPO}}/docs/WP-REGISTRY.md`: статусы + даты.
 
-**2d.** Обновить `DS-strategy/inbox/open-sessions.log`: удалить строки закрытых сессий.
+**2d.** Обновить `{{GOVERNANCE_REPO}}/inbox/open-sessions.log`: удалить строки закрытых сессий.
 
 **2e.** Governance-синхронизация: новые репо/сервисы за день? → REPOSITORY-REGISTRY, navigation.md, MAP.002.
 
-**EXTENSION POINT:** Проверить `extensions/day-close.checks.md`. Если существует → `Read` и выполнить.
+**EXTENSION POINT:** Загрузить: `bash .claude/scripts/load-extensions.sh day-close checks`. Exit 0 → `Read` каждый файл из вывода (alphabetic) → выполнить. Exit 1 → пропустить. Поддерживает `extensions/day-close.checks.md` И `extensions/day-close.checks.<suffix>.md`.
 
 ### 3. Архивация
 
@@ -62,12 +65,12 @@ done
 
 ```bash
 grep -nE "→ ждёт|ждёт|dep:|блокер|blocked:|остановлен|ждёт согласования" \
-  /Users/User/.claude/projects/*/memory/MEMORY.md 2>/dev/null
+  {{HOME_DIR}}/.claude/projects/*/memory/MEMORY.md 2>/dev/null
 ```
 
 Для каждого найденного паттерна:
 1. Определить номер РП (WP-NNN) из контекста строки
-2. Найти WP-context: `ls DS-strategy/inbox/WP-{N}-*.md` (если заархивирован — `archive/wp-contexts/`)
+2. Найти WP-context: `ls {{GOVERNANCE_REPO}}/inbox/WP-{N}-*.md` (если заархивирован — `archive/wp-contexts/`)
 3. Прочитать секцию «Что узнали» / «Осталось» / финальный статус
 4. Если там есть признак закрытия (`DONE`, `РЕШЕНО`, `✅`, `починил`, `закрыт`, `снят`) рядом с тем же именем/системой → обновить MEMORY.md, анонс: *«Memory drift: [факт] устарел → обновлён»*
 5. Если WP-context не найден → отметить в итогах: *«Memory drift: WP-N — context не найден, проверить вручную»*
@@ -77,10 +80,10 @@ grep -nE "→ ждёт|ждёт|dep:|блокер|blocked:|остановлен|
 ### 4в. Index Health Check
 
 > Ловит раздутие индекс-файлов (MEMORY.md, WP-REGISTRY.md, MAPSTRATEGIC.md, *-registry.md, *-index.md, *-catalog.md). Правило: hook-строки в индексах, не дамп контекста.
-> **Условный шаг:** скрипт опционален. Если `/Users/User/dev/IWE/DS-strategy/scripts/check-index-health.py` отсутствует — пропустить.
+> **Условный шаг:** скрипт опционален. Если `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/scripts/check-index-health.py` отсутствует — пропустить.
 
 ```bash
-SCRIPT="/Users/User/dev/IWE/DS-strategy/scripts/check-index-health.py"
+SCRIPT="{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/scripts/check-index-health.py"
 [ -f "$SCRIPT" ] && python3 "$SCRIPT" || echo "check-index-health.py не установлен — шаг пропущен"
 ```
 
@@ -133,7 +136,7 @@ SCRIPT="/Users/User/dev/IWE/DS-strategy/scripts/check-index-health.py"
 
 **г) Не забыто?**
 - Незакоммиченные изменения: `${IWE_SCRIPTS}/check-dirty-repos.sh` (сканирует ВСЕ репо в workspace, включая вложенные DS-* директории). Если есть грязные → закоммитить и запушить ДО продолжения.
-- **EXTENSION POINT:** Проверить `extensions/day-close.checks.md`. Если существует → `Read` и выполнить.
+- **EXTENSION POINT:** Загрузить: `bash .claude/scripts/load-extensions.sh day-close checks` (см. шаг 2e).
 - Незаписанные мысли? (спросить пользователя)
 - Обещания кому-то? (спросить пользователя)
 
@@ -160,7 +163,11 @@ SCRIPT="/Users/User/dev/IWE/DS-strategy/scripts/check-index-health.py"
 - Порядок: свежие итоги СВЕРХУ (обратная хронология)
 - Содержание: таблица коммитов по репо, закрытые РП, продвинутые РП, мультипликатор
 
-### 10. Закоммитить DS-strategy
+### 9c. Extensions (after)
+
+Загрузить: `bash .claude/scripts/load-extensions.sh day-close after`. Exit 0 → `Read` каждый файл из вывода (alphabetic) → выполнить. Exit 1 → пропустить. Поддерживает `extensions/day-close.after.md` И `extensions/day-close.after.<suffix>.md`.
+
+### 10. Закоммитить {{GOVERNANCE_REPO}}
 
 ### 11. Верификация (Haiku R23)
 
@@ -168,7 +175,7 @@ SCRIPT="/Users/User/dev/IWE/DS-strategy/scripts/check-index-health.py"
 Передать: (1) чеклист Day Close, (2) черновик итогов, (3) список обновлённых файлов.
 По ❌ — исправить до показа пользователю.
 
-**EXTENSION POINT:** Проверить `extensions/day-close.checks.md`. Если существует → `Read` и выполнить.
+**EXTENSION POINT:** Загрузить: `bash .claude/scripts/load-extensions.sh day-close checks`. Exit 0 → `Read` каждый файл из вывода (alphabetic) → выполнить. Exit 1 → пропустить. Поддерживает `extensions/day-close.checks.md` И `extensions/day-close.checks.<suffix>.md`.
 
 ---
 
