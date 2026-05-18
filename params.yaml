@@ -44,3 +44,12 @@ capture_autonomy: propose
 
 # Директория с пользовательскими расширениями протоколов
 extensions_dir: extensions
+
+# === Knowledge Index ===
+
+# Путь к knowledge-index репо (относительно WORKSPACE_DIR).
+# Используется week-draft-init.sh и week-draft-append.sh (Day Close на Пн)
+# для накопительного черновика недельного поста.
+# Пустая строка → скрипты молча пропускают шаг (фича опциональна).
+# Пример: knowledge_repo: "DS-Knowledge-Index"
+knowledge_repo: ""
