@@ -1,8 +1,11 @@
 ---
 name: day-open
-description: "Протокол открытия дня (Day Open). Собирает вчерашние коммиты, issues, заметки, календарь, Scout, мир — формирует DayPlan и compact dashboard."
+description: "Протокол открытия дня (Day Open). Собирает вчерашние коммиты, issues, заметки, календарь, бота QA, Scout, мир — формирует DayPlan и compact dashboard."
 argument-hint: ""
 version: 1.1.0
+routing:
+  executor: sonnet
+  deterministic: false
 ---
 
 # Day Open (протокол открытия дня)
@@ -39,6 +42,8 @@ Fallback: файла нет → пропустить, работать из ко
 ### 1b. GitHub Issues
 `gh issue list` по всем репо (включая вложенным). Фильтр 2 дня. Связь с РП по ключевым словам.
 **Только actionable:** пропускать read-only и upstream без push-доступа.
+
+**Critical FMT issues (детектор):** `bash $IWE_SCRIPTS/fmt-critical-alert.sh --no-telegram` — выводит markdown-таблицу открытых issues с label `critical`/`deadline` в FMT-exocortex-template. Если `TG_BOT_TOKEN` и `TG_CHAT_ID` настроены — убрать `--no-telegram` для дублирования в Telegram (MVP detection chain для weekend P0). Источник: peer-session 2026-06-01-18.
 
 ### 1c. Inbox Triage (ежедневный — WP-196 Ф11 п4)
 
@@ -80,8 +85,27 @@ Mandatory РП отсутствуют в WeekPlan → «Требует вним�
 ### 4b. Помидорки
 Из `day-rhythm-config.yaml → pomodoro`.
 
-### 4c. Календарь
-Из `day-rhythm-config.yaml → calendar_ids` (если указаны) или все доступные календари → list-events → свободные блоки ≥1h (09:00–19:00). Private — пропустить.
+### 4c. Календарь (Day Mode)
+`bash $IWE_WORKSPACE/scripts/server-calendar.sh YYYY-MM-DD` — секция «Календарь» для DayPlan.
+
+**Что делает скрипт:**
+1. Запрашивает ВСЕ календари из `calendar_ids` (см. feedback `feedback_calendar_query_day_open` — никаких сокращений).
+2. Фильтрует только по `visibility == "private"` (не по названию).
+3. Классифицирует:
+   - **Встречи** — несколько участников, длительность >30 мин, нет маркеров задачи.
+   - **Напоминания / Тех-операции** — маркеры 🔧 ✅ ⏰ 🔔 📋 ❗ или ключевые слова (backup, проверить, remind, smoke, test), либо ≤30 мин без участников.
+4. Статус относительно текущего времени:
+   - ⏳ предстоит / 🔄 идёт / ✅ завершено.
+5. Считает свободные блоки ≥1h в рамках 09:00–22:00.
+
+**Формат в DayPlan:** две таблицы (Встречи + Напоминания) по шаблону `memory/templates-dayplan.md`.
+
+### 4c-alt. Календарь недели (Week Mode, strategy_day)
+Если сегодня `strategy_day` (из `day-rhythm-config.yaml`) — перед формированием WeekPlan запустить:
+```bash
+bash $IWE_WORKSPACE/scripts/server-calendar.sh --week YYYY-MM-DD
+```
+Результат → вставить в WeekPlan секцию **«Календарь недели W{N}»** (шаблон `memory/templates-dayplan.md`). Это позволяет при планировании сразу учитывать встречи и тех-операции.
 
 ### 5. IWE за ночь (светофор)
 update.sh, MCP reindex, Scout. 🟢/🟡/🔴.

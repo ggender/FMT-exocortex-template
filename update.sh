@@ -127,6 +127,15 @@ DOWNLOAD_IDX=0
 # Parse manifest: extract path and desc for each file entry
 while IFS='|' read -r fpath fdesc; do
     [ -z "$fpath" ] && continue
+    # Protected user files (issue #154): never overwrite if they already exist locally.
+    # The "Не затрагиваются" list below is cosmetic; this is the actual skip-if-exists guard.
+    case "$fpath" in
+        params.yaml|memory/MEMORY.md|.claude/settings.local.json)
+            if [ -f "$SCRIPT_DIR/$fpath" ]; then
+                UNCHANGED=$((UNCHANGED + 1))
+                continue
+            fi ;;
+    esac
     DOWNLOAD_IDX=$((DOWNLOAD_IDX + 1))
     printf "  (%s/%s) %s\r" "$DOWNLOAD_IDX" "$TOTAL_FILES" "$fpath"
 
@@ -844,18 +853,12 @@ if $ROLES_CHANGED && command -v launchctl >/dev/null 2>&1; then
     done
 fi
 
-# === Step 6e: Update local manifest version to reflect installed upstream ===
-if [ -f "$SCRIPT_DIR/update-manifest.json" ] && command -v python3 >/dev/null 2>&1; then
-    python3 -c "
-import json
-path = '$SCRIPT_DIR/update-manifest.json'
-with open(path) as f:
-    data = json.load(f)
-data['version'] = '$UPSTREAM_VERSION'
-with open(path, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-    f.write('\n')
-" 2>/dev/null && echo "  • update-manifest.json: версия обновлена до $UPSTREAM_VERSION"
+# === Step 6e: Replace local manifest with downloaded remote manifest ===
+# Replaces entire manifest (files + deprecated_files + version), not just version field.
+# This ensures validators (D1/D9/D10) and future updates see the correct file list.
+if [ -f "$MANIFEST" ]; then
+    cp "$MANIFEST" "$SCRIPT_DIR/update-manifest.json" \
+        && echo "  • update-manifest.json: заменён remote manifest (v$UPSTREAM_VERSION)"
 fi
 
 # === Step 7: Commit changes ===
