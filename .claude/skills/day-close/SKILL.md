@@ -1,6 +1,6 @@
 ---
 name: day-close
-description: "Протокол закрытия дня (Day Close). Алиас для /run-protocol close day — симметрия с /day-open."
+description: "Day Close protocol. Alias for /run-protocol close day — symmetric with /day-open."
 argument-hint: ""
 version: 1.0.0
 layer: L1
@@ -32,6 +32,9 @@ Day Close = протокол. Исполнять ТОЛЬКО пошагово �
 
 ### 1. Extensions (checks)
 Загрузить: `bash .claude/scripts/load-extensions.sh day-close checks`. Exit 0 → `Read` каждый файл из вывода (alphabetic) → выполнить. Exit 1 → пропустить. Поддерживает `extensions/day-close.checks.md` И `extensions/day-close.checks.<suffix>.md`.
+
+### 1b. Extensions (after)
+Загрузить: `bash .claude/scripts/load-extensions.sh day-close after`. Exit 0 → `Read` каждый файл из вывода (alphabetic) → выполнить (smoke-тесты, week-draft-append, доп. проверки). Exit 1 → пропустить. Поддерживает `extensions/day-close.after.md` И `extensions/day-close.after.<suffix>.md`.
 
 > **Постусловия:** если checks-файлы выполнились — `## Итоги дня` обновлён в Obsidian-заметке текущего дня; маркер `.krisp-done` за сегодня поставлен (если есть Krisp-расширение).
 
@@ -103,7 +106,8 @@ grep -nE "→ ждёт|ждёт|dep:|блокер|blocked:|остановлен|
 > Ловит раздутие индекс-файлов (MEMORY.md, WP-REGISTRY.md, MAPSTRATEGIC.md, *-registry.md, *-index.md, *-catalog.md). Правило: [feedback_memory_index_discipline.md](../../../memory/feedback_memory_index_discipline.md) — шапки и колонки индексов = hook-строки, не дамп контекста.
 
 ```bash
-python3 {{HOME_DIR}}/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/check-index-health.py
+SCRIPT="{{HOME_DIR}}/IWE/.claude/scripts/check-index-health.py"
+[ -f "$SCRIPT" ] && python3 "$SCRIPT" || echo "skip: check-index-health.py не найден — запустите update.sh"
 ```
 
 Для каждого FAIL/WARN в отчёте:
@@ -130,6 +134,26 @@ python3 {{HOME_DIR}}/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/check-index
 ```
 
 Скрипт выполняет: Linear sync, downstream sync (update.sh), backup (memory/ + CLAUDE.md).
+
+### 6a. Week Draft (рефлексивный черновик)
+
+> **Роль после ОПТ-5:** week-draft — рефлексивный черновик, НЕ дубль метрик WeekReport.
+> WeekReport (шаг 3f/10b) = факты (коммиты, РП, мультипликатор).
+> Week-draft = мысли, нерешённые вопросы, инсайты для недельного поста.
+
+**Понедельник:** инициализировать черновик недели:
+```bash
+"$IWE_SCRIPTS/week-draft-init.sh"
+```
+
+**Каждый день (включая Пн):** дописать метрики дня в черновик:
+```bash
+"$IWE_SCRIPTS/week-draft-append.sh"
+```
+
+Если `knowledge_repo` не задан в `params.yaml` — оба скрипта выходят с кодом 0 (пропуск), шаг не блокирует закрытие.
+
+> Рефлексия (мир/сообщество/человек/личное): если `knowledge_repo` настроен — агент набрасывает три первых секции из контекста дня; по «Личному» — спросить пилота.
 
 ### 7. Мультипликатор IWE
 
@@ -220,7 +244,8 @@ DAY_NUM=$(date +%-d)
 ### 11b. Rule Classifier (WP-272 Ф5.2)
 
 ```bash
-python3 $HOME/IWE/.claude/scripts/rule-classifier.py
+SCRIPT="$HOME/IWE/.claude/scripts/rule-classifier.py"
+[ -f "$SCRIPT" ] && python3 "$SCRIPT" || echo "skip: rule-classifier.py требует ручной установки (claude CLI + PACK-agent-rules)"
 ```
 
 Запускается после коммита. Обогащает журнал `~/logs/rule-engine/YYYY-MM-DD.jsonl` → `YYYY-MM-DD-classified.jsonl`. Exit код игнорировать (launchd тоже запускает раз в час — идемпотентно). Не ждать завершения если >60 сек (kill).
@@ -236,7 +261,9 @@ python3 $HOME/IWE/.claude/scripts/rule-classifier.py
 ## Чеклист Day Close
 
 - [ ] Все изменения закоммичены и запушены (по всем репо)
+- [ ] Extensions before выполнены (если файлы есть)
 - [ ] Extensions checks выполнены (если файлы есть)
+- [ ] Extensions after выполнены (если файлы есть)
 - [ ] Постусловия extensions: `## Итоги дня` обновлён в Obsidian-заметке текущего дня
 - [ ] Маркер `.krisp-done` за сегодня поставлен (если есть Krisp-расширение)
 - [ ] MEMORY.md: done-РП удалены, активные актуальны, drift-scan выполнен (шаг 5б)
@@ -256,7 +283,8 @@ python3 $HOME/IWE/.claude/scripts/rule-classifier.py
 - [ ] Видео: обработанные помечены (если video.enabled)
 - [ ] Governance: REPOSITORY-REGISTRY, navigation.md, MAP.002
 - [ ] Backup: `day-close.sh` выполнен
-- [ ] **Rule-engine FP-stats** (WP-272 Ф2.5): `python3 ~/IWE/.claude/scripts/fp-stats.py --date $(date +%Y-%m-%d)` → если есть `⚠️ REVISE` (FP > 20%) — записать в «Завтра начать с» правило + FP%. Флоу ревизии: `~/IWE/PACK-agent-rules/revision-flow.md`.
+- [ ] Week Draft (6a): `week-draft-init.sh` (Пн) + `week-draft-append.sh` выполнены (или пропуск если `knowledge_repo` не задан)
+- [ ] **Rule-engine FP-stats** (WP-272 Ф2.5): `[ -f ~/IWE/.claude/scripts/fp-stats.py ] && python3 ~/IWE/.claude/scripts/fp-stats.py --date $(date +%Y-%m-%d) || echo "skip: fp-stats.py требует rule-classifier.py"` → если есть `⚠️ REVISE` (FP > 20%) — записать в «Завтра начать с» правило + FP%. Флоу ревизии: `~/IWE/PACK-agent-rules/revision-flow.md`.
 - [ ] Верификация compliance: /verify запускался сегодня?
 - [ ] WakaTime + Мультипликатор: часы / **бюджет ПО ФАКТУ** (sessions/00-index.md перечислен; ad-hoc peer-сессии оценены по числу ходов; сверхплановая работа в плановом РП — по факту); остаток недели. Sanity check: мультипликатор <1.5x при ≥10 peer-сессий = пересчитать
 - [ ] Итоги дня записаны в DayPlan **(postcondition 9a: grep подтверждён)**
