@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# .githooks/commit-msg
+# Part of WP-453: Pipeline for updating section 7 of the guide
+#
+# THE T3 CALL MOVED TO post-commit (2026-07-31, peer session 2026-07-31-22):
+# at the commit-msg stage the new commit is not created yet — `git rev-parse HEAD` returned
+# the SHA of the PREVIOUS commit, and a failure of another hook after the write left a false
+# trigger in section-state.yaml. The file is kept as a marker; the logic is in post-commit.
+
+exit 0

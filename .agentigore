@@ -1,0 +1,13 @@
+# .agentigore — files that peer-adapter-filter.py does not copy into the projection
+# for partner agents (peer sessions DP.SC.154). fnmatch patterns, one per line.
+#
+# The template line of an authorized git URL in this script falsely matches
+# the PII pattern "Basic Auth URL" — the file itself contains no secrets,
+# but the partner verifier does not need it anyway.
+scripts/copy-to-aisystant.py
+scripts/iwe-grep-secret.sh
+.github/workflows/cloud-scheduler.yml
+guide-kit/structurer/test_quarantine.py
+scripts/add-secret.sh
+__pycache__/
+*.pyc

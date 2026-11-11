@@ -1,28 +1,35 @@
 #!/usr/bin/env bash
 # routing: helper  skill=audit-installation  called-by=haiku
 # see DP.SC.159, DP.ROLE.059
-# memory-validate.sh — валидация frontmatter memory/*.md (WP-217 Ф10.2)
+# memory-validate.sh — validate frontmatter of memory/*.md (WP-217 Phase 10.2)
 #
-# Проверяет: наличие frontmatter, обязательные поля, допустимые значения,
-# инварианты (superseded → superseded_by, schema_version = 1).
+# Checks: frontmatter presence, required fields, allowed values,
+# invariants (superseded → superseded_by, schema_version = 1).
 #
 # Usage:
-#   bash scripts/memory-validate.sh                     # все memory/*.md
-#   bash scripts/memory-validate.sh memory/file.md      # один файл
-#   bash scripts/memory-validate.sh --dir PATH          # другая директория
-#   bash scripts/memory-validate.sh --quiet             # только FAIL строки
+#   bash scripts/memory-validate.sh                     # all memory/*.md
+#   bash scripts/memory-validate.sh memory/file.md      # one file
+#   bash scripts/memory-validate.sh --dir PATH          # another directory
+#   bash scripts/memory-validate.sh --quiet             # FAIL lines only
 #
-# Exit code: 0 = все OK, 1 = есть нарушения.
-# Spec: memory/memory-lifecycle-spec.md §3 (WP-217 Ф10.1)
+# Exit code: 0 = all OK, 1 = there are violations.
+# Spec: memory/memory-lifecycle-spec.md §3 (WP-217 Phase 10.1)
 
 set -eu
 
-IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+# NOTE: iwe-env-bootstrap.sh reassigns SCRIPT_DIR to its OWN location (via its
+# BASH_SOURCE[0]) as a side effect of being sourced — save ours first so the
+# frontmatter.sh source below still resolves relative to THIS script (issue #229).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_MEMORY_VALIDATE_DIR="$SCRIPT_DIR"
+source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
+source "$_MEMORY_VALIDATE_DIR/../.claude/lib/frontmatter.sh" || exit 1
 MEMORY_DIR="$IWE_ROOT/memory"
 QUIET=0
 TARGET=""
 
-# Файлы-исключения (индексы, не memory-объекты)
+# Exclusion files (indexes, not memory objects)
 EXCLUDE="MEMORY.md"
 
 REQUIRED_FIELDS="name description type horizon domains status valid_from owner schema_version"
@@ -43,13 +50,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Извлечь значение поля из frontmatter файла
-get_field() {
-    local file="$1" field="$2"
-    awk '/^---/{f++} f==1 && /^'"$field"':/{gsub(/^[^:]+: */,""); gsub(/^["'"'"']|["'"'"']$/,""); print; exit}' "$file"
-}
-
-# Проверить наличие frontmatter
+# Check for frontmatter presence
 has_frontmatter() {
     local file="$1"
     head -1 "$file" | grep -q '^---$'
@@ -60,16 +61,16 @@ validate_file() {
     local errors=0
     local errs=""
 
-    # Проверка 1: наличие frontmatter
+    # Check 1: frontmatter presence
     if ! has_frontmatter "$file"; then
         errs="$errs\n  ❌ нет frontmatter (файл должен начинаться с ---)"
         errors=$((errors + 1))
-        # Без frontmatter дальше не проверяем
+        # Without frontmatter we do not check further
         printf "FAIL %s%b\n" "$file" "$errs"
         return 1
     fi
 
-    # Проверка 2: все обязательные поля присутствуют
+    # Check 2: all required fields are present
     for field in $REQUIRED_FIELDS; do
         val=$(get_field "$file" "$field")
         if [ -z "$val" ]; then
@@ -78,7 +79,23 @@ validate_file() {
         fi
     done
 
-    # Проверка 3: допустимые значения type
+    # Check 2b (#513): the canonical form is flat. A nested metadata:
+    # (written by the Claude Code system instruction, cannot be forbidden) is read by
+    # a single reader; a conflict «one key in both forms with different
+    # values» is an error, silent priority is forbidden.
+    if awk '/^---/{f++; next} f!=1{next} /^metadata:[ \t\r]*$/{found=1; exit} END{exit !found}' "$file"; then
+        for field in $REQUIRED_FIELDS; do
+            flat=$(awk '/^---/{f++; next} f!=1{next} /^'"$field"':/{gsub(/^[^:]+: */,""); gsub(/["'"'"']/,""); print; exit}' "$file")
+            nested=$(awk '/^---/{f++; next} f!=1{next} /^metadata:[ \t\r]*$/{m=1; next} m && /^[^ \t]/{m=0} m && /^[ \t]+'"$field"':/{gsub(/^[ \t]*[^:]+: */,""); gsub(/["'"'"']/,""); print; exit}' "$file")
+            if [ -n "$flat" ] && [ -n "$nested" ] && [ "$flat" != "$nested" ]; then
+                errs="$errs\n  ❌ конфликт форм: '$field' задан и плоско ('$flat'), и в metadata: ('$nested')"
+                errors=$((errors + 1))
+            fi
+        done
+        [ "${QUIET:-0}" -eq 0 ] && echo "  ℹ️  $file: вложенная форма metadata: (канонична плоская — spec §3); reader нормализует, перезапись сериализует плоско"
+    fi
+
+    # Check 3: allowed values of type
     type_val=$(get_field "$file" "type")
     if [ -n "$type_val" ]; then
         valid=0
@@ -91,7 +108,7 @@ validate_file() {
         fi
     fi
 
-    # Проверка 4: допустимые значения horizon
+    # Check 4: allowed values of horizon
     horizon_val=$(get_field "$file" "horizon")
     if [ -n "$horizon_val" ]; then
         valid=0
@@ -104,7 +121,7 @@ validate_file() {
         fi
     fi
 
-    # Проверка 5: допустимые значения status
+    # Check 5: allowed values of status
     status_val=$(get_field "$file" "status")
     if [ -n "$status_val" ]; then
         valid=0
@@ -117,7 +134,7 @@ validate_file() {
         fi
     fi
 
-    # Проверка 6: valid_from формат YYYY-MM-DD
+    # Check 6: valid_from format YYYY-MM-DD
     valid_from=$(get_field "$file" "valid_from")
     if [ -n "$valid_from" ]; then
         if ! echo "$valid_from" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
@@ -126,7 +143,7 @@ validate_file() {
         fi
     fi
 
-    # Проверка 7: инвариант superseded → superseded_by обязателен
+    # Check 7: invariant superseded → superseded_by is mandatory
     if [ "$status_val" = "superseded" ]; then
         superseded_by=$(get_field "$file" "superseded_by")
         if [ -z "$superseded_by" ]; then
@@ -135,10 +152,29 @@ validate_file() {
         fi
     fi
 
-    # Проверка 8: schema_version = 1
+    # Check 8: schema_version = 1
     schema_ver=$(get_field "$file" "schema_version")
     if [ -n "$schema_ver" ] && [ "$schema_ver" != "1" ]; then
         errs="$errs\n  ⚠️  schema_version=$schema_ver (текущая=1, нужна миграция через memory-migrate.sh)"
+    fi
+
+    # Check 9 (issue #736, design session with Codex): type=lesson without review_at
+    # or without a generalization to future behavior is a chronicle of a single incident,
+    # not a systemic lesson. We stop writing such a file at creation time,
+    # without relying on later cleanup (spec §3 invariants).
+    if [ "$type_val" = "lesson" ]; then
+        review_at=$(get_field "$file" "review_at")
+        if [ -z "$review_at" ]; then
+            errs="$errs\n  ❌ type=lesson но поле review_at отсутствует (spec §3)"
+            errors=$((errors + 1))
+        elif ! echo "$review_at" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+            errs="$errs\n  ❌ review_at='$review_at' не соответствует формату YYYY-MM-DD"
+            errors=$((errors + 1))
+        fi
+        if ! grep -qE '\*\*(Как применять|How to apply):\*\*' "$file"; then
+            errs="$errs\n  ❌ type=lesson но в тексте нет маркера **Как применять:** / **How to apply:** (spec §3)"
+            errors=$((errors + 1))
+        fi
     fi
 
     if [ $errors -eq 0 ]; then
@@ -150,7 +186,7 @@ validate_file() {
     fi
 }
 
-# Основной цикл
+# Main loop
 total=0
 failed=0
 
@@ -162,7 +198,7 @@ fi
 
 for f in $files; do
     [ -f "$f" ] || continue
-    # Пропустить файлы-исключения (индексы)
+    # Skip exclusion files (indexes)
     name=$(basename "$f")
     skip=0
     for exc in $EXCLUDE; do [ "$name" = "$exc" ] && skip=1 && break; done

@@ -1,24 +1,25 @@
 #!/bin/bash
-# daily-report.sh — ежедневный отчёт работы scheduler
+# daily-report.sh — daily scheduler work report
 #
-# Формирует отчёт: что должно было сработать, что сработало, что нет.
+# Builds the report: what should have run, what ran, what did not.
 #
-# Если DS-agent-workspace/ существует → пишет туда (scheduler/reports/).
-# Иначе → DS-strategy/current/ (обратная совместимость).
+# If DS-agent-workspace/ exists → writes there (scheduler/reports/).
+# Otherwise → DS-strategy/current/ (backward compatibility).
 #
-# Использование:
-#   daily-report.sh           # сформировать отчёт за сегодня
-#   daily-report.sh --dry-run # показать отчёт, не записывать
+# Usage:
+#   daily-report.sh           # build the report for today
+#   daily-report.sh --dry-run # show the report, do not write
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="$HOME/.local/state/exocortex"
-LOG_DIR="{{HOME_DIR}}/logs/synchronizer"
-STRATEGY_DIR="{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}"
+LOG_DIR="$HOME/logs/synchronizer"
+# WP-273 0.29.4 R6.1 fix (issue #271): runtime resolve instead of build-time placeholders — as in strategist.sh.
+STRATEGY_DIR="${IWE_WORKSPACE:-$HOME/IWE}/${IWE_GOVERNANCE_REPO:-DS-strategy}"
 
-# Agent Workspace: если существует — отчёты идут туда
-AGENT_WORKSPACE="{{WORKSPACE_DIR}}/DS-agent-workspace"
+# Agent Workspace: if it exists — reports go there
+AGENT_WORKSPACE="${IWE_WORKSPACE:-$HOME/IWE}/DS-agent-workspace"
 if [ -d "$AGENT_WORKSPACE/.git" ]; then
     REPORT_DIR="$AGENT_WORKSPACE/scheduler/reports"
     ARCHIVE_DIR="$AGENT_WORKSPACE/scheduler/reports/archive"
@@ -41,7 +42,7 @@ DRY_RUN=false
 
 REPORT_FILE="$REPORT_DIR/SchedulerReport $DATE.md"
 SCHEDULER_LOG="$LOG_DIR/scheduler-$DATE.log"
-STRATEGIST_LOG="{{HOME_DIR}}/logs/strategist/$DATE.log"
+STRATEGIST_LOG="$HOME/logs/strategist/$DATE.log"
 
 mkdir -p "$ARCHIVE_DIR"
 
@@ -96,11 +97,6 @@ compute_traffic_light() {
     if [ -f "$SCHEDULER_LOG" ] && grep -q "push failed" "$SCHEDULER_LOG" 2>/dev/null; then
         if [ "$color" = "GREEN" ]; then color="YELLOW"; fi
         issues+="push failed (Mac оффлайн?); "
-    fi
-
-    if (( 10#$HOUR >= 23 )) && ! check_ran "strategist-note-review" &>/dev/null; then
-        if [ "$color" = "GREEN" ]; then color="YELLOW"; fi
-        issues+="note-review не запустился; "
     fi
 
     if [ "$DOW" = "1" ] && ! check_ran_week "strategist-week-review" &>/dev/null; then
@@ -162,7 +158,7 @@ agent: Синхронизатор
 | 1 | Сканирование кода | **❌** | — |"
     fi
 
-    # 2. Стратег утренний
+    # 2. Morning strategist
     local sm_time
     if sm_time=$(check_ran "strategist-morning"); then
         report+="
@@ -172,45 +168,36 @@ agent: Синхронизатор
 | 2 | Стратег утренний | **❌** | — |"
     fi
 
-    # 3. Note-review (после 22:00)
-    if (( 10#$HOUR >= 22 )); then
-        local nr_time
-        if nr_time=$(check_ran "strategist-note-review"); then
-            report+="
-| 3 | Разбор заметок | **✅** | $nr_time |"
-        else
-            report+="
-| 3 | Разбор заметок | **❌** | — |"
-        fi
-    fi
+    # The note-review row and its traffic-light check are gone: the scheduler no longer runs
+    # note-review (template owner's decision, July 2026), so a missing marker is not a failure.
 
-    # 4. Week-review (Пн)
+    # 3. Week-review (Mon)
     if [ "$DOW" = "1" ]; then
         local wr_time
         if wr_time=$(check_ran_week "strategist-week-review"); then
             report+="
-| 4 | Обзор недели | **✅** | $wr_time |"
+| 3 | Обзор недели | **✅** | $wr_time |"
         else
             report+="
-| 4 | Обзор недели | **❌** | — |"
+| 3 | Обзор недели | **❌** | — |"
         fi
     fi
 
-    # 5. Экстрактор inbox-check
+    # 4. Extractor inbox-check
     local ic_detail
     if ic_detail=$(check_interval "extractor-inbox-check"); then
         report+="
-| 5 | Проверка входящих | **✅** | $ic_detail |"
+| 4 | Проверка входящих | **✅** | $ic_detail |"
     else
         report+="
-| 5 | Проверка входящих | **❌** | — |"
+| 4 | Проверка входящих | **❌** | — |"
     fi
 
     report+="
 
 "
 
-    # Ошибки
+    # Errors
     report+="## Ошибки и предупреждения
 "
     local warnings=""
@@ -225,7 +212,7 @@ $warnings
 **Что делать:**
 "
         if echo "$warnings" | grep -q "push failed" 2>/dev/null; then
-            report+="- **push failed:** Mac был оффлайн. Запусти \`cd {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}} && git pull --rebase && git push\`
+            report+="- **push failed:** Mac был оффлайн. Запусти \`cd $STRATEGY_DIR && git pull --rebase && git push\`
 "
         fi
     else

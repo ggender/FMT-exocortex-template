@@ -6,6 +6,7 @@ user_invocable: true
 version: 1.0.0
 layer: L1
 status: active
+browser_safe: false
 triggers:
   slash: [/iwe-restore]
   phrases: ["восстанови память", "восстановить IWE", "перенести на новое устройство"]
@@ -44,8 +45,8 @@ gates_rationale: "операционный скилл; WP Gate применим 
 
 1. Аргумент скилла `$ARGUMENTS` (если передан)
 2. Переменная окружения `$DS_STRATEGY` или `$GOVERNANCE_REPO`
-3. Стандартный путь `~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/`
-4. Поиск: `find ~/IWE -maxdepth 2 -name "exocortex" -type d 2>/dev/null`
+3. Стандартный путь `${IWE_WORKSPACE:-$HOME/IWE}/${IWE_GOVERNANCE_REPO:-DS-strategy}/`
+4. Поиск: `find ${IWE_WORKSPACE:-$HOME/IWE} -maxdepth 2 -name "exocortex" -type d 2>/dev/null`
 
 ```bash
 GOVERNANCE="${1:-${DS_STRATEGY:-$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}}}"
@@ -54,7 +55,7 @@ EXOCORTEX="$GOVERNANCE/exocortex"
 
 Если `exocortex/` не найден → сказать:
 
-> «Не нашёл бэкап. Папка `exocortex/` отсутствует в `$GOVERNANCE`. Убедись, что governance-репо склонирован: `git clone <url> ~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}`. Если репо на другом пути — вызови `/iwe-restore путь/к/DS-strategy`.»
+> «Не нашёл бэкап. Папка `exocortex/` отсутствует в `$GOVERNANCE`. Убедись, что governance-репо склонирован: `git clone <url> ${IWE_WORKSPACE:-$HOME/IWE}/${IWE_GOVERNANCE_REPO:-DS-strategy}`. Если репо на другом пути — вызови `/iwe-restore путь/к/DS-strategy`.»
 
 Завершить.
 
@@ -83,13 +84,13 @@ MEMORY_DST="$HOME/.claude/projects/${HOME_SLUG}-IWE/memory"
 
 ```
 Найден бэкап:
-  Источник:   ~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/exocortex/   (N файлов, последний бэкап: ДАТА)
+  Источник:   ${IWE_WORKSPACE:-$HOME/IWE}/${IWE_GOVERNANCE_REPO:-DS-strategy}/exocortex/   (N файлов, последний бэкап: ДАТА)
   Назначение: ~/.claude/projects/.../memory/
 
 Что будет восстановлено:
   memory/: [список файлов .md и .yaml]
-  CLAUDE.md → ~/IWE/CLAUDE.md
-  AGENTS.md → ~/IWE/AGENTS.md  (если есть)
+  CLAUDE.md → ${IWE_WORKSPACE:-$HOME/IWE}/CLAUDE.md
+  AGENTS.md → ${IWE_WORKSPACE:-$HOME/IWE}/AGENTS.md  (если есть)
 
 Текущее состояние memory/:
   [пусто / N файлов уже есть]
@@ -140,12 +141,18 @@ rsync -av --exclude='CLAUDE.md' --exclude='AGENTS.md' \
 
 ### 4c. Копировать CLAUDE.md
 
+> issue #217: подстановка `{{HOME_DIR}}` → `$HOME` делает восстановление ОС-агностичным
+> (бэкап пишется на плейсхолдере в `day-close.sh`, симметрично `setup.sh`).
+> `$HOME` стоит в replacement-части `sed s///` — экранируем `&`/`\`, иначе `$HOME`
+> с `&` трактуется как «весь совпавший текст» и портит путь (cold-review находка).
+
 ```bash
 WORKSPACE_DIR="${IWE_WORKSPACE:-$HOME/IWE}"
+HOME_SED_SAFE=$(printf '%s' "$HOME" | sed 's/[&\]/\\&/g')
 if [ -f "$EXOCORTEX/CLAUDE.md" ]; then
   # Если CLAUDE.md уже есть — показать: «CLAUDE.md уже существует. Перезаписать?»
   # При согласии:
-  cp "$EXOCORTEX/CLAUDE.md" "$WORKSPACE_DIR/CLAUDE.md"
+  sed "s|{{HOME_DIR}}|$HOME_SED_SAFE|g" "$EXOCORTEX/CLAUDE.md" > "$WORKSPACE_DIR/CLAUDE.md"
 fi
 ```
 
@@ -153,7 +160,7 @@ fi
 
 ```bash
 if [ -f "$EXOCORTEX/AGENTS.md" ]; then
-  cp "$EXOCORTEX/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
+  sed "s|{{HOME_DIR}}|$HOME_SED_SAFE|g" "$EXOCORTEX/AGENTS.md" > "$WORKSPACE_DIR/AGENTS.md"
 fi
 ```
 

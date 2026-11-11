@@ -6,7 +6,7 @@
 - **HUB (личные планы):** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/
 - **Документы стратегии:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/docs/ (ВСЕ файлы: Strategy.md, Dissatisfactions.md, Session Agenda.md)
 - **Inbox:** {{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/inbox/ ([fleeting-notes.md](https://github.com/{{GITHUB_USER}}/{{GOVERNANCE_REPO}}/blob/main/inbox/fleeting-notes.md) + свежие файлы за неделю)
-- **Активные РП:** `bash {{WORKSPACE_DIR}}/scripts/active-wp-sweep.sh` (агрегатор по `{{GOVERNANCE_REPO}}/inbox/WP-*.md` + git-активность 7д)
+- **Активные РП:** `bash {{WORKSPACE_DIR}}/scripts/active-wp-sweep.sh` (агрегатор по `{{GOVERNANCE_REPO}}/inbox/WP-*.md` + git-активность 7д — ~15с, не ручной обход)
 - **Стратегические карты:** {{WORKSPACE_DIR}}/*/MAPSTRATEGIC.md (если есть в репо)
 - **MEMORY:** ~/.claude/projects/{{CLAUDE_PROJECT_SLUG}}/memory/MEMORY.md
 
@@ -48,7 +48,7 @@
 - Прочитай QA-отчёт бота: `DS-agent-workspace/scheduler/feedback-triage/` (последний по дате) — **структурированный отчёт** из feedback_triage DB: замечания (✏️) первые, urgent (high/critical) вторые, кластеры проблем третьи. Auto-triage уже выполнен ботом → Session-Prep проверяет кластеры (≥3 = **urgent** → WP-debt) и помечает resolved
 - Для каждой заметки/файла определи: → в план недели? → capture в Pack? → в повестку для обсуждения? → удалить?
 - **Недельная агрегация Inbox Triage:**
-  > Это НЕ дубль ежедневного triage Note-Review. Note-Review классифицирует заметки и пишет предложения в целевые документы. Session-Prep агрегирует результаты за неделю из этих документов + добавляет unsatisfied-questions.
+  > Это НЕ дубль разбора заметок (Note-Review запускается только вручную). Note-Review классифицирует заметки и пишет предложения в целевые документы. Session-Prep агрегирует результаты за неделю из этих документов + добавляет unsatisfied-questions.
   1. Собери ВСЕ оставшиеся `🔄` заметки (идеи, висящие >7 дней)
   2. Собери все непринятые предложения из прошлых Note-Review (если остались в WeekPlan)
   3. Сформируй блок `📋 Inbox Triage (недельный)` с 3 корзинами:
@@ -84,7 +84,11 @@
 > Источник: `bash {{WORKSPACE_DIR}}/scripts/active-wp-sweep.sh`
 >
 > Скрипт обходит все `inbox/WP-*.md`, кросс-проверяет git-активность за 7 дней,
-> выдаёт markdown-таблицу активных РП со статусами и бюджетами.
+> выдаёт markdown-таблицу активных РП со статусами и бюджетами за секунды —
+> не читай `WORKPLAN.md` вручную по каждому репо (эти файлы почти нигде не
+> существуют, а сам `{{GOVERNANCE_REPO}}`/CLAUDE.md называет их отменённым
+> антипаттерном; ручной обход растягивал session-prep на 30+ минут вместо
+> секунд, WP-484 20.07).
 
 - Запусти `active-wp-sweep.sh` и используй результат как вход для формирования плана
 - Расхождения с HUB-планом отметь для обсуждения на сессии
@@ -94,6 +98,7 @@
 - Прочитай `{{GOVERNANCE_REPO}}/docs/Session Agenda.md`
 - Определи: какие нерегулярные блоки применимы на этой неделе? (ретро, архитектура, разбор документа и др.)
 - Если есть — добавь в повестку
+- **Month Close (issue #616):** используй строку «Первый Пн месяца: да/нет» из системного контекста в начале этого промпта — не выводи сам, последний Пн месяца и первый Пн следующего легко перепутать без реальной календарной проверки.
 
 #### 6.5. Контент-план недели (→ секция «Контент-план» в WeekPlan)
 
@@ -112,9 +117,9 @@
 
 #### 8. Сохрани черновик (ОБЯЗАТЕЛЬНО)
 
-1. Перемести предыдущий `WeekPlan W*.md` из `current/` в `archive/week-plans/`
+1. Перемести предыдущий `WeekPlan W*.md` из `current/` в `archive/week-plans/` (только план прошлой недели W{N-1}; `WeekPlan W{N} *.md` текущей недели не трогай — это заготовка ночного открытия недели, см. п. 7)
 2. Перемести предыдущий `DayPlan *.md` из `current/` в `archive/day-plans/` (если есть)
-3. ~~WeekReport~~ — отдельный файл больше не создаётся (deprecated). Итоги — секция в WeekPlan.
+3. Перемести предыдущий `WeekReport W*.md` из `current/` в `archive/week-reports/` (issue #596: создаётся week-review.md, Пн 00:00, до этого шага — должен уже лежать в `current/` к моменту session-prep)
 4. Перемести предыдущий `SchedulerReport *.md` из `current/` в `archive/scheduler-reports/` (если есть и не текущий)
 5. **Архивация WP context files (safety net — Close уже архивирует done-файлы):**
    - Для каждого `inbox/WP-*.md` сверь статус с MEMORY.md (source-of-truth)
@@ -122,13 +127,15 @@
    - Если фронтматтер WP-файла не совпадает с MEMORY.md → обновить фронтматтер перед перемещением
 6. **Полная очистка inbox/ (еженедельно, единственный владелец — Session-Prep):**
    - `extraction-reports/` — учитывай `status` во frontmatter (инвариант «capture не исчезает без решения»):
-     - `status ∈ {applied, rejected, no-pending}` и старше 7 дней → удали (решение принято, информация в Pack/feedback-log)
+     - `status ∈ {applied, rejected, no-pending}` и старше 7 дней → **архивируй** в `archive/extraction-reports/` (та же конвенция и владелец чистки, что у captures ниже; НЕ удалять — отчёт это вторая половина того же аудитного следа «capture → решение», issue #507)
      - `status ∈ {pending-review, partially-applied, deferred}` → **не трогай** (ждут разбора через `/apply-captures`)
      - Без frontmatter или без поля `status` → оставить (считать pending-review)
    - `captures.md` — записи с `[processed ...]` старше 14 дней → **архивируй** в `archive/captures/captures-{period}.md` (НЕ удалять — это аудитный след записи в Pack). Записи с `[rejected ...]` старше 14 дней → архивируй туда же.
    - Записи **без** метки `[processed]` или `[rejected]` → оставить (ещё не обработаны Экстрактором)
    - Прочие файлы (не fleeting-notes.md, не captures.md, не активные WP-*) → «Ещё нужен?» Нет → удали или `archive/notes/`
-7. Создай `current/WeekPlan W{N} YYYY-MM-DD.md` (Пн текущей недели)
+7. `current/WeekPlan W{N} YYYY-MM-DD.md` (Пн текущей недели):
+   - **Файл уже есть** (заготовка ночного открытия недели `week-open-scaffold.sh`, `generated_by` во frontmatter) → **дополни его**: впиши повестку, таблицу РП и вопросы в существующие разделы, заголовки разделов и frontmatter заготовки не меняй и не удаляй. Файл заново не создавай — по разделам заготовки его читают ночные проверки плана.
+   - **Файла нет** → проверь `git log origin/main -- "current/WeekPlan W{N}*"` (заготовка могла не дойти до этой копии). Нашлась на origin → возьми её (`git checkout origin/main -- <путь>`) и дополни, как выше. Нет и на origin → создай файл по формату ниже.
 8. Закоммить в {{GOVERNANCE_REPO}}
 
 **Формат WeekPlan:**
@@ -225,19 +232,19 @@ agent: Стратег
 
 **Результат:** черновик WeekPlan (`status: draft`) с повесткой сессии в `current/`.
 
-> Следующий шаг: сессия стратегирования с пользователем → `prompts/strategy-session-weekly.md`.
-> Если первая сессия месяца → `prompts/strategy-session-monthly.md`.
+> Следующий шаг: сессия стратегирования с пользователем → диспетчер `.claude/skills/strategy-session/SKILL.md` (`prompts/strategy-session.md` — только отсылка к этому диспетчеру для `strategist.sh strategy-session`, своего описания сессии в нём нет).
 
 ---
 
 ## Post-session sync (выполняется Стратегом после утверждения WeekPlan)
 
-> **Правило:** По итогам стратегирования обновить Strategy.md и статусы затронутых WP context files. Это гарантирует, что данные не устаревают между сессиями.
+> **Предусловие:** до `status: confirmed` выполнить раздел «Регистрация РП перед утверждением» в `.claude/skills/strategy-session/SKILL.md`. Новые РП создаются через `/wp-new`, а не только строками WeekPlan. Этот шаг синхронизации не заменяет регистрацию.
 
 1. **Strategy.md** — обновить «Приоритеты месяца» (статусы, бюджеты, новые приоритеты)
-2. **inbox/WP-NNN.md** — для каждого РП, упомянутого в WeekPlan:
+2. **inbox/WP-{N}/WP-{N}.md + docs/WP-REGISTRY.md** — для каждого РП, упомянутого в WeekPlan:
+   - Проверить карточку и строку реестра с тем же номером; новых кандидатов без регистрации быть не должно
    - Обновить `status:` (done/in_progress/pending)
-   - Добавить новые РП (если появились в ходе сессии)
-   - Убрать done/archived
-3. **MEMORY.md** — синхронизировать таблицу «РП текущей недели»
+   - Сохранить источник и критерий готовности в карточке, не только в WeekPlan
+   - Отсутствует карточка/строка — не создавать новый номер: остановить синхронизацию, вернуть план в `draft` и восстановить регистрацию по общему порядку
+3. **current/active-wp.md и MEMORY.md** — проверить согласованность с выбранными РП; синхронизировать «РП текущей недели» по проверенному WeekPlan
 4. Закоммитить все изменения

@@ -1,36 +1,38 @@
 #!/usr/bin/env bash
 # routing: helper  skill=audit-installation  called-by=haiku  deterministic=true
 # see DP.SC.159, DP.ROLE.059
-# iwe-audit.sh — оркестратор аудита инсталляции IWE
+# iwe-audit.sh — orchestrator of the IWE installation audit
 #
-# WP-265 Ф2, 2026-04-26.
+# WP-265 Phase 2, 2026-04-26.
 # Service Clause: PACK-verification/.../08-service-clauses/VR.SC.005-installation-audit.md
 #
-# РОЛЬ: R8 Синхронизатор — собирает 3 детерминированных раздела
-# (Inventory, L1 drift, DS-strategy) и формирует markdown-отчёт.
-# Раздел 4 (MCP healthcheck) и verdict в роли VR.R.002 Аудитор —
-# зона скилла-обёртки `/audit-installation`, не этого скрипта.
+# ROLE: R8 Synchronizer — collects 3 deterministic sections
+# (Inventory, L1 drift, DS-strategy) and builds a markdown report.
+# Section 4 (MCP healthcheck) and the verdict in the VR.R.002 Auditor role are
+# the domain of the wrapper skill `/audit-installation`, not of this script.
 #
-# Принцип «детектор отчитывается, оператор делает» (см. iwe-drift.sh:7-11):
-# скрипт ТОЛЬКО детектит и пишет markdown. Никаких автофиксов.
+# Principle "the detector reports, the operator acts" (see iwe-drift.sh:7-11):
+# the script ONLY detects and writes markdown. No autofixes.
 #
 # Usage:
-#   bash iwe-audit.sh                  # полный отчёт
-#   bash iwe-audit.sh --critical       # передать --critical в iwe-drift.sh
-#   bash iwe-audit.sh --root PATH      # указать $IWE_ROOT (default: $HOME/IWE)
+#   bash iwe-audit.sh                  # full report
+#   bash iwe-audit.sh --critical       # pass --critical to iwe-drift.sh
+#   bash iwe-audit.sh --root PATH      # set $IWE_ROOT (default: $HOME/IWE)
 #   bash iwe-audit.sh -h | --help
 #
 # Exit code:
-#   0 — всё ОК
-#   1 — warnings (отсутствует ≤2 опциональных файла)
-#   2 — критичные gaps (≥1 обязательного файла нет)
+#   0 — all OK
+#   1 — warnings (≤2 optional files missing)
+#   2 — critical gaps (≥1 required file missing)
 #
-# Требования: bash, git, stat, awk (POSIX). Без внешних зависимостей.
-# macOS-совместимо (stat -f vs stat -c — детектится в runtime).
+# Requirements: bash, git, stat, awk (POSIX). No external dependencies.
+# macOS-compatible (stat -f vs stat -c — detected at runtime).
 
 set -eu
 
-IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
 DRIFT_CRITICAL=""
 
 while [ $# -gt 0 ]; do
@@ -52,15 +54,15 @@ fi
 
 # ---------- Helpers ----------
 
-# Проверка существования файла/директории/симлинка с разрешением симлинков.
-# Возвращает 0 если есть (любой тип), 1 иначе.
+# Check existence of a file/directory/symlink with symlink resolution.
+# Returns 0 if present (any type), 1 otherwise.
 exists_any() {
     local p="$1"
     [ -e "$p" ] || [ -L "$p" ]
 }
 
-# Печать строки таблицы для inventory.
-# Аргументы: путь (относительно IWE_ROOT), required (1/0), note
+# Print an inventory table row.
+# Arguments: path (relative to IWE_ROOT), required (1/0), note
 emit_inventory_row() {
     local rel="$1"
     local required="$2"
@@ -87,7 +89,7 @@ emit_inventory_row() {
     printf "| \`%s\` | %s | %s |\n" "$rel" "$status" "$note"
 }
 
-# ---------- Заголовок ----------
+# ---------- Header ----------
 
 NOW=$(date '+%Y-%m-%d %H:%M')
 echo "# IWE Installation Audit — $NOW"
@@ -95,7 +97,7 @@ echo ""
 echo "_Root:_ \`$IWE_ROOT\`"
 echo ""
 
-# ---------- Раздел 1: Inventory ----------
+# ---------- Section 1: Inventory ----------
 
 echo "## 1. Inventory (структура файлов)"
 echo ""
@@ -107,15 +109,15 @@ FOUND=0
 CRITICAL_MISSING=0
 OPTIONAL_MISSING=0
 
-# CLAUDE.md — обязателен
+# CLAUDE.md — required
 emit_inventory_row "CLAUDE.md" 1 ""
 
-# MEMORY.md — обязателен; может быть симлинком на auto-memory
-# В этой инсталляции MEMORY.md живёт в memory/ — проверяем оба варианта
+# MEMORY.md — required; may be a symlink to auto-memory
+# In this installation MEMORY.md lives in memory/ — check both variants
 if exists_any "$IWE_ROOT/MEMORY.md"; then
     emit_inventory_row "MEMORY.md" 1 ""
 elif exists_any "$IWE_ROOT/memory/MEMORY.md"; then
-    # MEMORY.md в memory/ — это auto-memory layout
+    # MEMORY.md in memory/ — this is the auto-memory layout
     TOTAL=$((TOTAL + 1))
     FOUND=$((FOUND + 1))
     printf "| \`%s\` | %s | %s |\n" "MEMORY.md" "✅" "в memory/MEMORY.md (auto-memory layout)"
@@ -125,33 +127,33 @@ else
     printf "| \`%s\` | %s | %s |\n" "MEMORY.md" "❌" "не найден ни в корне, ни в memory/"
 fi
 
-# .claude/sync-manifest.yaml — обязателен (источник для iwe-drift)
+# .claude/sync-manifest.yaml — required (source for iwe-drift)
 emit_inventory_row ".claude/sync-manifest.yaml" 1 ""
 
-# Правила
+# Rules
 emit_inventory_row ".claude/rules/distinctions.md" 1 ""
 emit_inventory_row ".claude/rules/formatting.md" 1 ""
 
-# Скиллы (минимум day-open / day-close)
+# Skills (at least day-open / day-close)
 emit_inventory_row ".claude/skills/day-open/SKILL.md" 1 ""
 emit_inventory_row ".claude/skills/day-close/SKILL.md" 1 ""
 
-# Протоколы
+# Protocols
 emit_inventory_row "memory/protocol-open.md" 1 ""
 emit_inventory_row "memory/protocol-work.md" 1 ""
 emit_inventory_row "memory/protocol-close.md" 1 ""
 
-# Скрипты
-# update.sh ЖИВЁТ ТОЛЬКО в FMT-exocortex-template/update.sh для всех режимов
-# (он сам резолвит SCRIPT_DIR=FMT-template, WORKSPACE_DIR=parent). Никогда не
-# пропагируется в workspace/scripts/. Аналогично iwe-drift.sh: для user-mode
-# живёт только в FMT-template/scripts/, в author-mode дублируется в workspace/scripts/.
+# Scripts
+# update.sh LIVES ONLY in FMT-exocortex-template/update.sh for all modes
+# (it resolves SCRIPT_DIR=FMT-template, WORKSPACE_DIR=parent itself). It is never
+# propagated into workspace/scripts/. Likewise iwe-drift.sh: in user-mode it
+# lives only in FMT-template/scripts/, in author-mode it is duplicated into workspace/scripts/.
 AUTHOR_MODE=0
 if [ -f "$IWE_ROOT/params.yaml" ] && grep -qE "^author_mode:[[:space:]]*true" "$IWE_ROOT/params.yaml"; then
     AUTHOR_MODE=1
 fi
 
-# update.sh — всегда в FMT-template (для обоих режимов)
+# update.sh — always in FMT-template (for both modes)
 TOTAL=$((TOTAL + 1))
 if exists_any "$IWE_ROOT/FMT-exocortex-template/update.sh"; then
     FOUND=$((FOUND + 1))
@@ -161,7 +163,7 @@ else
     printf "| \`%s\` | %s | %s |\n" "FMT-exocortex-template/update.sh" "❌" "не найден — обновления невозможны"
 fi
 
-# iwe-drift.sh: проверяем оба возможных места (user-mode → только FMT-template, author-mode → оба)
+# iwe-drift.sh: check both possible locations (user-mode → FMT-template only, author-mode → both)
 TOTAL=$((TOTAL + 1))
 DRIFT_FMT="$IWE_ROOT/FMT-exocortex-template/scripts/iwe-drift.sh"
 DRIFT_WS="$IWE_ROOT/scripts/iwe-drift.sh"
@@ -180,10 +182,10 @@ else
     printf "| \`%s\` | %s | %s |\n" "scripts/iwe-drift.sh" "❌" "не найден ни в FMT-template, ни в workspace"
 fi
 
-# params.yaml — конфиг
+# params.yaml — config
 emit_inventory_row "params.yaml" 1 ""
 
-# Governance-репо — директория с .git
+# Governance repo — a directory with .git
 GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
 DS_DIR="$IWE_ROOT/$GOV_REPO"
 TOTAL=$((TOTAL + 1))
@@ -204,18 +206,18 @@ echo ""
 echo "**coverage:** $FOUND/$TOTAL (отсутствует: критичных=$CRITICAL_MISSING, опциональных=$OPTIONAL_MISSING)"
 echo ""
 
-# ---------- Раздел 2: L1 drift ----------
+# ---------- Section 2: L1 drift ----------
 
 echo "## 2. L1 drift (платформа vs FMT)"
 echo ""
 
-# Ищем iwe-drift.sh: предпочитаем workspace (author-mode source-of-truth), фоллбэк на FMT-template (user-mode).
+# Look for iwe-drift.sh: prefer workspace (author-mode source-of-truth), fall back to FMT-template (user-mode).
 DRIFT_SCRIPT="$IWE_ROOT/scripts/iwe-drift.sh"
 if [ ! -f "$DRIFT_SCRIPT" ] && [ -f "$IWE_ROOT/FMT-exocortex-template/scripts/iwe-drift.sh" ]; then
     DRIFT_SCRIPT="$IWE_ROOT/FMT-exocortex-template/scripts/iwe-drift.sh"
 fi
 if [ -f "$DRIFT_SCRIPT" ]; then
-    # Не валим весь скрипт если iwe-drift падает — set -eu выключаем точечно
+    # Do not fail the whole script if iwe-drift fails — disable set -eu selectively
     set +e
     if [ -n "$DRIFT_CRITICAL" ]; then
         bash "$DRIFT_SCRIPT" --critical
@@ -234,7 +236,7 @@ else
 fi
 echo ""
 
-# ---------- Раздел 3: Governance repo ----------
+# ---------- Section 3: Governance repo ----------
 
 echo "## 3. $GOV_REPO"
 echo ""
@@ -263,7 +265,7 @@ else
         if [ "$DS_CHANGES_COUNT" -gt 0 ]; then
             echo ""
             echo '```'
-            # Показываем не больше 30 строк, чтобы не раздувать отчёт
+            # Show at most 30 lines so as not to bloat the report
             printf '%s\n' "$DS_STATUS" | head -30
             if [ "$DS_CHANGES_COUNT" -gt 30 ]; then
                 echo "... (ещё $((DS_CHANGES_COUNT - 30)) строк)"
@@ -273,12 +275,31 @@ else
     fi
 
     echo ""
+    echo "### Git hooks (core.hooksPath)"
+    echo ""
+    # WP-484 Phase 9 (2026-07-23/24): core.hooksPath drifting from .githooks/ once
+    # silently disabled the pre-push force-push guard (WP-436) on a live host —
+    # the "guard exists but isn't wired up" gap stayed invisible until an incident.
+    HOOKS_PATH=$(git -C "$DS_DIR" config --get core.hooksPath 2>/dev/null || echo "")
+    if [ "$HOOKS_PATH" != ".githooks" ]; then
+        if [ -x "$DS_DIR/scripts/install-hooks.sh" ]; then
+            echo "⚠️ \`core.hooksPath\` = \`${HOOKS_PATH:-<не задан>}\`, ожидается \`.githooks\` — pre-push force-push guard (WP-436) может быть отключён. Почини: \`bash \"$DS_DIR/scripts/install-hooks.sh\"\`."
+        else
+            echo "⚠️ \`core.hooksPath\` = \`${HOOKS_PATH:-<не задан>}\`, ожидается \`.githooks\` — pre-push force-push guard (WP-436) может быть отключён. Почини: \`git -C \"$DS_DIR\" config core.hooksPath .githooks\`."
+        fi
+    elif [ ! -x "$DS_DIR/.githooks/pre-push" ]; then
+        echo "⚠️ \`core.hooksPath\` верный, но \`.githooks/pre-push\` отсутствует или не исполняемый."
+    else
+        echo "✅ \`core.hooksPath=.githooks\`, \`pre-push\` guard подключён"
+    fi
+
+    echo ""
     echo "### Diff с FMT-strategy-template"
     echo ""
 
-    # Шаблон ищется в двух местах:
-    # (1) {{WORKSPACE_DIR}}/FMT-strategy-template/ — отдельная директория (авторская)
-    # (2) {{WORKSPACE_DIR}}/FMT-exocortex-template/templates/strategy-skeleton/ — внутри FMT (приезжает через update.sh)
+    # The template is looked up in two places:
+    # (1) {{WORKSPACE_DIR}}/FMT-strategy-template/ — a separate directory (author's)
+    # (2) {{WORKSPACE_DIR}}/FMT-exocortex-template/templates/strategy-skeleton/ — inside FMT (arrives via update.sh)
     FMT_DIR="$IWE_ROOT/FMT-strategy-template"
     if [ ! -d "$FMT_DIR" ] && [ -d "$IWE_ROOT/FMT-exocortex-template/templates/strategy-skeleton" ]; then
         FMT_DIR="$IWE_ROOT/FMT-exocortex-template/templates/strategy-skeleton"
@@ -311,13 +332,121 @@ fi
 
 echo ""
 
-# ---------- Раздел 4: User customizations (L3) ----------
+# ---------- Section 3b: Promoted-copy drift (issue #347, layout — issue #582) ----------
 #
-# L3 живёт в 3-х местах: extensions/, params.yaml (отличия от skeleton),
-# AUTHOR-ONLY зоны в .claude/rules/distinctions.md.
-# Цель — показать, что после restore личные кастомизации на месте.
-# Это **информационная** секция: отсутствие L3 ≠ failure (новый пилот ещё
-# ничего не настроил). Verdict выносит Аудитор содержательно.
+# CI's check-seed-drift.sh holds scripts/ ↔ seed/strategy/scripts/ INSIDE the
+# template, but the EXECUTED copy lives on the user machine where CI cannot see
+# it. The audit runs exactly where both sides physically exist — compare here.
+# Which copy counts as "installed" depends on the layout: Day Open skills invoke
+# the pipeline through $IWE_SCRIPTS (iwe-env-bootstrap.sh default: template
+# scripts/). Installations that promoted copies into the governance repo point
+# IWE_SCRIPTS at $GOV_REPO/scripts instead. So the drift check compares seed
+# against the copy that actually runs ($IWE_SCRIPTS) — requiring a governance
+# copy on a template-layout install was a false "incomplete pipeline" (issue
+# #582). All three files must be checked, absence included: a missing
+# lib/common.sh breaks the scaffold just as silently as a stale one (the
+# scaffold sources it with FATAL on absence).
+# The seed copies carry a "# SNAPSHOT — …" marker line (see
+# check-seed-drift.sh): byte-identity holds only after stripping that one
+# line, so the comparison below strips it too — plain cmp would report the
+# marker itself as drift on every healthy install.
+
+echo "## 3b. Промотированные копии Day Open (seed шаблона ↔ исполняемая копия)"
+echo ""
+SEED_SCRIPTS="$IWE_ROOT/FMT-exocortex-template/seed/strategy/scripts"
+SEED_SNAPSHOT_MARKER="# SNAPSHOT — synced manually via script-promote.sh from FMT-exocortex-template/scripts/. Do not edit here directly."
+# Physical paths (symlinks resolved), so that an alias of one directory is not
+# read as "another copy".
+EXEC_SCRIPTS="$(cd "${IWE_SCRIPTS:-/nonexistent}" 2>/dev/null && pwd -P || true)"
+SEED_SCRIPTS_PHYSICAL="$(cd "$SEED_SCRIPTS" 2>/dev/null && pwd -P || true)"
+IWE_SCRIPTS_DISPLAY="${IWE_SCRIPTS:-<не задан>}"
+if [ ! -d "$SEED_SCRIPTS" ]; then
+    echo "_N/A — шаблон с seed/strategy/scripts/ не найден._"
+elif [ -z "$EXEC_SCRIPTS" ]; then
+    echo "- ❌ каталог \`IWE_SCRIPTS=$IWE_SCRIPTS_DISPLAY\` не существует — конвейер Day Open не запустится"
+    CRITICAL_MISSING=$((CRITICAL_MISSING + 1))
+elif [ "$EXEC_SCRIPTS" = "$SEED_SCRIPTS_PHYSICAL" ]; then
+    echo "_N/A — конвейер исполняется прямо из seed (\`$IWE_SCRIPTS_DISPLAY\`), отдельной копии нет._"
+else
+    PROMOTED_DRIFT=0
+    for rel in day-open-scaffold.sh day-open-pipeline.sh lib/common.sh; do
+        seed_f="$SEED_SCRIPTS/$rel"
+        inst_f="$EXEC_SCRIPTS/$rel"
+        canon_f="$IWE_ROOT/FMT-exocortex-template/scripts/$rel"
+        # Three sides: canon (template scripts/), snapshot (seed, with the
+        # SNAPSHOT marker — the check-seed-drift.sh convention), executable copy
+        # ($IWE_SCRIPTS). The sides are evaluated independently: the absence of one does not
+        # suppress diagnostics for the others (review #582, round 3). Drift
+        # classification is by canon: comparing only seed↔executable wrongly
+        # declares the executable copy stale when in fact the snapshot lagged,
+        # and vice versa (round 2). `cp` from seed as advice is forbidden: it would carry over
+        # the marker line into the executable copy, and the warning would return
+        # on the next audit (round 1).
+        present=0
+        if [ ! -f "$seed_f" ]; then
+            echo "- ⚠️ \`seed/strategy/scripts/$rel\` отсутствует в шаблоне — регрессия доставки seed"
+            PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+        else
+            present=$((present + 1))
+        fi
+        if [ ! -f "$inst_f" ]; then
+            echo "- ⚠️ \`$rel\` отсутствует в исполняемой копии (\`$IWE_SCRIPTS_DISPLAY\`) — конвейер Day Open неполный"
+            PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+        else
+            present=$((present + 2))
+        fi
+        if [ -f "$canon_f" ]; then
+            inst_ok=0; seed_ok=0
+            [ $((present & 2)) -eq 2 ] && diff -q "$canon_f" "$inst_f" >/dev/null 2>&1 && inst_ok=1
+            [ $((present & 1)) -eq 1 ] && diff -q <(grep -vF "$SEED_SNAPSHOT_MARKER" "$seed_f") "$canon_f" >/dev/null 2>&1 && seed_ok=1
+            if [ $((present & 2)) -eq 2 ] && [ "$inst_ok" = 0 ]; then
+                echo "- ⚠️ \`$rel\` в исполняемой копии отстал от канона шаблона — обновить: \`cp \"$canon_f\" \"$inst_f\"\` (свои правки в копии сначала сохранить)"
+                PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+            fi
+            if [ $((present & 1)) -eq 1 ] && [ "$seed_ok" = 0 ]; then
+                # check-seed-drift.sh --fix only rebuilds snapshots that carry the
+                # marker; advising it for an unmarked one changed nothing (#1350).
+                if grep -qF "$SEED_SNAPSHOT_MARKER" "$seed_f"; then
+                    echo "- ⚠️ \`seed/strategy/scripts/$rel\` отстал от \`scripts/$rel\` — обновить снимок: \`bash \"$IWE_ROOT/FMT-exocortex-template/scripts/check-seed-drift.sh\" --fix\`"
+                else
+                    echo "- ⚠️ \`seed/strategy/scripts/$rel\` отстал от \`scripts/$rel\` и не несёт маркер SNAPSHOT — \`check-seed-drift.sh --fix\` такой файл не обновляет; обновить шаблон (\`update.sh\`) или сообщить об устаревшем снимке в issue шаблона"
+                fi
+                PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+            fi
+            if [ "$present" = 3 ] && [ "$inst_ok" = 1 ] && [ "$seed_ok" = 1 ]; then
+                echo "- ✅ \`$rel\` совпадает с каноном шаблона (seed-снимок синхронен)"
+            fi
+        else
+            # A missing canon is itself a template delivery regression,
+            # even if the remaining copies match (review #582, round 4).
+            echo "- ⚠️ канонический \`scripts/$rel\` отсутствует в шаблоне — регрессия доставки"
+            PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+            if [ "$present" = 3 ]; then
+                # The only remaining meaningful comparison: snapshot
+                # (without marker) ↔ executable copy.
+                if diff -q <(grep -vF "$SEED_SNAPSHOT_MARKER" "$seed_f") "$inst_f" >/dev/null 2>&1; then
+                    echo "- ✅ \`$rel\` совпадает с seed (канон scripts/ недоступен)"
+                else
+                    echo "- ⚠️ \`$rel\` в исполняемой копии разошёлся с seed шаблона, канонический \`scripts/$rel\` не найден — сверить вручную"
+                    PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
+                fi
+            fi
+        fi
+    done
+    if [ "$PROMOTED_DRIFT" -gt 0 ]; then
+        OPTIONAL_MISSING=$((OPTIONAL_MISSING + PROMOTED_DRIFT))
+    fi
+fi
+
+echo ""
+
+# ---------- Section 4: User customizations (L3) ----------
+#
+# L3 lives in 3 places: extensions/, params.yaml (differences from skeleton),
+# AUTHOR-ONLY zones in extensions/*.md.
+# The goal is to show that personal customizations are in place after restore.
+# This is an **informational** section: absence of L3 ≠ failure (a new pilot has not
+# configured anything yet). The Auditor issues the verdict on substance.
 
 echo "## 4. User customizations (L3)"
 echo ""
@@ -330,7 +459,7 @@ if [ ! -d "$EXT_DIR" ]; then
     echo "_extensions/ директория отсутствует — расширения не настроены_"
 else
     set +e
-    EXT_FILES=$(find "$EXT_DIR" -maxdepth 1 -type f -name "*.md" ! -name "README.md" 2>/dev/null | sort)
+    EXT_FILES=$(find -L "$EXT_DIR" -maxdepth 1 -type f -name "*.md" ! -name "README.md" 2>/dev/null | sort)
     set -e
     if [ -z "$EXT_FILES" ]; then
         echo "_В extensions/ только README — пользовательских хуков нет_"
@@ -338,29 +467,41 @@ else
         EXT_COUNT=$(printf '%s\n' "$EXT_FILES" | wc -l | tr -d ' ')
         echo "**Найдено хуков:** $EXT_COUNT"
         echo ""
-        echo "| Hook | Размер |"
-        echo "|---|---|"
+        echo "| Hook | Размер | Источник |"
+        echo "|---|---|---|"
         printf '%s\n' "$EXT_FILES" | while read -r ext_file; do
             ext_name=$(basename "$ext_file")
             ext_size=$(wc -l < "$ext_file" | tr -d ' ')
-            printf "| \`%s\` | %s строк |\n" "$ext_name" "$ext_size"
+            # issue #341 item 1: extensions are often kept in the governance repo and linked
+            # here — silently showing them as a regular file hides where the
+            # customization actually lives (important when triaging after restore/update).
+            if [ -L "$ext_file" ]; then
+                ext_target=$(readlink "$ext_file")
+                printf "| \`%s\` | %s строк | симлинк → \`%s\` |\n" "$ext_name" "$ext_size" "$ext_target"
+            else
+                printf "| \`%s\` | %s строк | файл |\n" "$ext_name" "$ext_size"
+            fi
         done
     fi
 fi
 echo ""
 
-# 4b. params.yaml — отличия от skeleton
+# 4b. params.yaml — differences from skeleton
 echo "### params.yaml — отличия от шаблона"
 echo ""
 PARAMS_USER="$IWE_ROOT/params.yaml"
-PARAMS_TEMPLATE="$IWE_ROOT/FMT-exocortex-template/params.yaml"
+# issue #348: the reference moved to params.yaml.example — the working params.yaml inside the
+# template is no longer tracked. The old name stays as a fallback: on a partially
+# updated installation the previous file may still be lying around.
+PARAMS_TEMPLATE="$IWE_ROOT/FMT-exocortex-template/params.yaml.example"
+[ -f "$PARAMS_TEMPLATE" ] || PARAMS_TEMPLATE="$IWE_ROOT/FMT-exocortex-template/params.yaml"
 if [ ! -f "$PARAMS_USER" ]; then
     echo "_params.yaml не найден — конфигурация не инициализирована_"
 elif [ ! -f "$PARAMS_TEMPLATE" ]; then
-    echo "_FMT-exocortex-template/params.yaml не найден — сравнение невозможно_"
+    echo "_FMT-exocortex-template/params.yaml.example не найден — сравнение невозможно_"
 else
     set +e
-    # Игнорируем комментарии и пустые строки при сравнении
+    # Ignore comments and empty lines in the comparison
     PARAMS_DIFF=$(diff <(grep -vE '^\s*(#|$)' "$PARAMS_TEMPLATE" | sort) \
                        <(grep -vE '^\s*(#|$)' "$PARAMS_USER" | sort) 2>&1)
     set -e
@@ -377,37 +518,65 @@ else
 fi
 echo ""
 
-# 4c. AUTHOR-ONLY зоны в distinctions.md
-echo "### AUTHOR-ONLY зоны"
+# 4c. AUTHOR-ONLY zones in extensions/
+echo "### AUTHOR-ONLY зоны (extensions/)"
 echo ""
-DIST_FILE="$IWE_ROOT/.claude/rules/distinctions.md"
-if [ ! -f "$DIST_FILE" ]; then
-    echo "_distinctions.md не найден_"
+EXTENSIONS_DIR="$IWE_ROOT/extensions"
+if [ ! -d "$EXTENSIONS_DIR" ]; then
+    echo "_extensions/ не найдена (нормально для нового пилота)_"
 else
-    # Считаем строки внутри блоков <!-- AUTHOR-ONLY --> ... <!-- /AUTHOR-ONLY -->
-    # ИЛИ под заголовком "## Различения (авторские" (текущая авторская конвенция)
-    # grep -c возвращает rc=1 при 0 матчей, что в связке с || echo даёт "0\n0"
     set +e
-    AUTHOR_HEADER=$(grep -c "^## Различения (авторские" "$DIST_FILE" 2>/dev/null)
-    AUTHOR_BLOCKS=$(grep -c "<!-- AUTHOR-ONLY" "$DIST_FILE" 2>/dev/null)
+    AUTHOR_FILES=$(find "$EXTENSIONS_DIR" -name "*.md" -print0 2>/dev/null | xargs -0 grep -l "<!-- AUTHOR-ONLY" 2>/dev/null | wc -l | tr -d ' ')
+    AUTHOR_BLOCKS=$(find "$EXTENSIONS_DIR" -name "*.md" -print0 2>/dev/null | xargs -0 grep -c "<!-- AUTHOR-ONLY" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')
     set -e
-    [ -z "$AUTHOR_HEADER" ] && AUTHOR_HEADER=0
+    [ -z "$AUTHOR_FILES" ] && AUTHOR_FILES=0
     [ -z "$AUTHOR_BLOCKS" ] && AUTHOR_BLOCKS=0
-    if [ "$AUTHOR_HEADER" -eq 0 ] && [ "$AUTHOR_BLOCKS" -eq 0 ]; then
-        echo "_Авторских/L3-различений не найдено (нормально для нового пилота)_"
+    if [ "$AUTHOR_BLOCKS" -eq 0 ]; then
+        echo "_AUTHOR-ONLY зон не найдено в extensions/ (нормально для нового пилота)_"
     else
-        echo "✅ Найдены маркеры L3:"
-        [ "$AUTHOR_HEADER" -gt 0 ] && echo "- секция \`## Различения (авторские)\` присутствует"
-        [ "$AUTHOR_BLOCKS" -gt 0 ] && echo "- блоков \`<!-- AUTHOR-ONLY -->\`: $AUTHOR_BLOCKS"
+        echo "✅ Найдены маркеры AUTHOR-ONLY в extensions/:"
+        echo "- файлов с маркерами: $AUTHOR_FILES"
+        echo "- блоков \`<!-- AUTHOR-ONLY -->\`: $AUTHOR_BLOCKS"
     fi
 fi
 echo ""
 
-# ---------- Раздел 5: Update prerequisites ----------
+# 4d. USER-SPACE zones in L1 FMT skills
+echo "### USER-SPACE зоны в L1-скиллах"
+echo ""
+FMT_SKILLS_DIR="$IWE_ROOT/FMT-exocortex-template/.claude/skills"
+if [ ! -d "$FMT_SKILLS_DIR" ]; then
+    echo "_FMT-exocortex-template/ не найден — пропуск_"
+else
+    total_l1=0
+    with_markers=0
+    without_markers=0
+    while IFS= read -r -d '' md_file; do
+        if grep -qE '^layer:[[:space:]]*L1' "$md_file" 2>/dev/null; then
+            total_l1=$((total_l1 + 1))
+            if grep -q '^<!-- USER-SPACE -->' "$md_file" 2>/dev/null; then
+                with_markers=$((with_markers + 1))
+            else
+                without_markers=$((without_markers + 1))
+            fi
+        fi
+    done < <(find "$FMT_SKILLS_DIR" -name "SKILL.md" -print0 2>/dev/null)
+    if [ "$total_l1" -eq 0 ]; then
+        echo "_L1-скиллов не найдено_"
+    elif [ "$without_markers" -eq 0 ]; then
+        echo "✅ USER-SPACE маркеры: $with_markers/$total_l1 L1-скиллов"
+    else
+        echo "⚠️ USER-SPACE маркеры отсутствуют в $without_markers/$total_l1 L1-скиллах"
+        echo "  Запусти: bash \$IWE_ROOT/FMT-exocortex-template/scripts/add-skill-markers.sh"
+    fi
+fi
+echo ""
+
+# ---------- Section 5: Update prerequisites ----------
 #
-# Проверяем предусловия успешного запуска update.sh, не запуская его сам.
-# Цель — диагностировать «почему update упадёт» ДО запуска (Q7 РП-265).
-# Не failure для всего аудита: отсутствие prereq → ⚠️ warning, пилот сам решает.
+# Check the preconditions for a successful update.sh run without running it.
+# The goal is to diagnose "why update will fail" BEFORE running it (Q7 WP-265).
+# Not a failure for the whole audit: a missing prereq → ⚠️ warning, the pilot decides.
 
 echo "## 5. Update prerequisites"
 echo ""
@@ -432,9 +601,89 @@ for bin in git curl python3; do
 done
 echo ""
 
+echo "### Доступная память"
+echo ""
+# issue #461 (WP-7 Phase 76): PreToolUse hook timeouts on a live installation were diagnosed
+# as "the hook did not respond", although measurement (4 hooks on the Edit/Write path, ~1.2s in total against
+# a timeout of tens of seconds) ruled hooks out as the cause — the real cause turned out to be
+# memory starvation of the host process. A proactive check catches this BEFORE the
+# failure shows up in the middle of a ritual, rather than only after the fact in the error text.
+# Capability-based: PSI (/proc/pressure/memory) — a Linux cgroup v2 mechanism with no
+# cross-platform equivalent (peer session 2026-08-18-08-wp7-f75-f76-smoke-memory,
+# consensus with Codex) — macOS gets RAM/swap via vm_stat/sysctl with no PSI analogue,
+# not a fake surrogate.
+MEM_WARN_THRESHOLD_PCT=15  # free < 15% of total — a warning, not a hard block
+case "$(uname)" in
+    Linux)
+        if [ -r /proc/meminfo ]; then
+            MEM_TOTAL_KB=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+            MEM_AVAIL_KB=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
+            if [ -n "$MEM_TOTAL_KB" ] && [ -n "$MEM_AVAIL_KB" ] && [ "$MEM_TOTAL_KB" -gt 0 ]; then
+                MEM_AVAIL_PCT=$((MEM_AVAIL_KB * 100 / MEM_TOTAL_KB))
+                MEM_TOTAL_GIB=$(awk -v kb="$MEM_TOTAL_KB" 'BEGIN{printf "%.1f", kb/1024/1024}')
+                MEM_AVAIL_GIB=$(awk -v kb="$MEM_AVAIL_KB" 'BEGIN{printf "%.1f", kb/1024/1024}')
+                if [ "$MEM_AVAIL_PCT" -lt "$MEM_WARN_THRESHOLD_PCT" ]; then
+                    echo "⚠️ Свободно ${MEM_AVAIL_GIB} ГиБ из ${MEM_TOTAL_GIB} ГиБ (${MEM_AVAIL_PCT}%) — ниже порога ${MEM_WARN_THRESHOLD_PCT}%. Отказы инструментов записи/чтения с сообщением \`PreToolUse hook did not respond\` при таком уровне памяти — известный класс (issue #461), не обязательно проблема хуков."
+                    UPD_WARN=$((UPD_WARN + 1))
+                else
+                    echo "✅ Свободно ${MEM_AVAIL_GIB} ГиБ из ${MEM_TOTAL_GIB} ГиБ (${MEM_AVAIL_PCT}%)"
+                fi
+            else
+                echo "ℹ️ Не удалось разобрать \`/proc/meminfo\` (MemTotal/MemAvailable)."
+            fi
+            if [ -r /proc/pressure/memory ]; then
+                PSI_SOME=$(awk '/^some/{for(i=1;i<=NF;i++) if ($i ~ /^avg60=/) print $i}' /proc/pressure/memory | cut -d= -f2)
+                if [ -n "$PSI_SOME" ]; then
+                    echo "ℹ️ Memory pressure (PSI avg60, some): ${PSI_SOME}%"
+                fi
+            fi
+        else
+            echo "ℹ️ \`/proc/meminfo\` недоступен — проверка памяти пропущена."
+        fi
+        ;;
+    Darwin)
+        set +e
+        MEM_TOTAL_BYTES=$(sysctl -n hw.memsize 2>/dev/null)
+        VM_STAT_OUT=$(vm_stat 2>/dev/null)
+        set -e
+        if [ -n "$MEM_TOTAL_BYTES" ] && [ "$MEM_TOTAL_BYTES" -gt 0 ] && [ -n "$VM_STAT_OUT" ]; then
+            PAGE_SIZE=$(echo "$VM_STAT_OUT" | head -1 | grep -oE '[0-9]+' | head -1)
+            PAGE_SIZE=${PAGE_SIZE:-4096}
+            PAGES_FREE=$(echo "$VM_STAT_OUT" | awk '/Pages free:/{gsub(/\./,"",$3); print $3}')
+            PAGES_INACTIVE=$(echo "$VM_STAT_OUT" | awk '/Pages inactive:/{gsub(/\./,"",$3); print $3}')
+            if [ -n "$PAGES_FREE" ] && [ -n "$PAGES_INACTIVE" ]; then
+                MEM_AVAIL_BYTES=$(( (PAGES_FREE + PAGES_INACTIVE) * PAGE_SIZE ))
+                MEM_AVAIL_PCT=$((MEM_AVAIL_BYTES * 100 / MEM_TOTAL_BYTES))
+                MEM_TOTAL_GIB=$(awk -v b="$MEM_TOTAL_BYTES" 'BEGIN{printf "%.1f", b/1024/1024/1024}')
+                MEM_AVAIL_GIB=$(awk -v b="$MEM_AVAIL_BYTES" 'BEGIN{printf "%.1f", b/1024/1024/1024}')
+                if [ "$MEM_AVAIL_PCT" -lt "$MEM_WARN_THRESHOLD_PCT" ]; then
+                    echo "⚠️ Свободно+inactive ${MEM_AVAIL_GIB} ГиБ из ${MEM_TOTAL_GIB} ГиБ (${MEM_AVAIL_PCT}%) — ниже порога ${MEM_WARN_THRESHOLD_PCT}%. Отказы инструментов записи/чтения с сообщением \`PreToolUse hook did not respond\` при таком уровне памяти — известный класс (issue #461), не обязательно проблема хуков."
+                    UPD_WARN=$((UPD_WARN + 1))
+                else
+                    echo "✅ Свободно+inactive ${MEM_AVAIL_GIB} ГиБ из ${MEM_TOTAL_GIB} ГиБ (${MEM_AVAIL_PCT}%)"
+                fi
+            else
+                echo "ℹ️ Не удалось разобрать вывод \`vm_stat\` (Pages free/inactive)."
+            fi
+        else
+            echo "ℹ️ \`sysctl hw.memsize\`/\`vm_stat\` недоступны — проверка памяти пропущена."
+        fi
+        set +e
+        SWAP_USED=$(sysctl -n vm.swapusage 2>/dev/null | grep -oE 'used = [0-9.]+[MG]' | grep -oE '[0-9.]+[MG]')
+        set -e
+        if [ -n "$SWAP_USED" ]; then
+            echo "ℹ️ Своп использован: ${SWAP_USED}"
+        fi
+        ;;
+    *)
+        echo "ℹ️ Проверка памяти не реализована для платформы $(uname)."
+        ;;
+esac
+echo ""
+
 echo "### Конфигурация (.exocortex.env)"
 echo ""
-# WP-273: setup.sh ≥0.7.0 сохраняет .exocortex.env в $IWE_ROOT/, не в $HOME/
+# WP-273: setup.sh ≥0.7.0 stores .exocortex.env in $IWE_ROOT/, not in $HOME/
 if [ -f "$IWE_ROOT/.exocortex.env" ]; then
     ENV_FILE="$IWE_ROOT/.exocortex.env"
 else
@@ -483,6 +732,56 @@ else
 fi
 echo ""
 
+# WP-5 F57: the author's usage instruction (FPF/USING-FPF.md) reaches an
+# installation only through its FPF copy, which update.sh fast-forwards. A copy
+# that is missing, older than the instruction, or behind the server means agents
+# quote FPF from memory. Warning only: the copy is optional infrastructure.
+# Commit age alone proves neither staleness (the author may simply not have
+# published) nor freshness (a copy can be days behind a recent tip), so age is
+# reported as a hint and lag is measured against the last known server state.
+report_fpf_copy_state() {
+    local fpf="$IWE_ROOT/FPF" commit_ts now_ts age_days behind
+
+    echo "### Состояние копии FPF"
+    echo ""
+    # .git is a file, not a directory, in a linked worktree or a submodule.
+    if [ ! -e "$fpf/.git" ]; then
+        echo "⚠️ Копия \`FPF/\` не найдена — скилл \`/fpf\` не сможет читать полный текст. Решение: \`bash update.sh\` или клонировать ailev/FPF в \`FPF/\`."
+        UPD_WARN=$((UPD_WARN + 1))
+        echo ""
+        return 0
+    fi
+    if [ -f "$fpf/USING-FPF.md" ]; then
+        echo "✅ \`FPF/USING-FPF.md\` (инструкция автора) на месте"
+    else
+        echo "⚠️ В копии FPF нет \`USING-FPF.md\` — копия старее инструкции автора. Решение: \`bash update.sh\` (обновит копию) или \`git -C FPF pull --ff-only\`, если в копии нет своих правок."
+        UPD_WARN=$((UPD_WARN + 1))
+    fi
+    behind=$(git -C "$fpf" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo "")
+    if [ -n "$behind" ] && [ "$behind" -gt 0 ]; then
+        echo "⚠️ Копия FPF отстаёт от известного состояния сервера на $behind коммит(ов) (по данным последнего получения обновлений). Решение: \`bash update.sh\`."
+        UPD_WARN=$((UPD_WARN + 1))
+    fi
+    commit_ts=$(git -C "$fpf" log -1 --format=%ct 2>/dev/null || echo 0)
+    now_ts=$(date +%s)
+    if [ "${commit_ts:-0}" -le 0 ]; then
+        echo "⚠️ Не удалось прочитать дату последнего коммита копии FPF."
+        UPD_WARN=$((UPD_WARN + 1))
+    else
+        age_days=$(( (now_ts - commit_ts) / 86400 ))
+        [ "$age_days" -lt 0 ] && age_days=0
+        if [ "$age_days" -gt 30 ]; then
+            echo "⚠️ Последний коммит копии FPF старше 30 дней ($age_days дн.) — возможно, копия устарела (или автор давно ничего не публиковал). Решение: \`bash update.sh\`."
+            UPD_WARN=$((UPD_WARN + 1))
+        elif [ -z "$behind" ] || [ "$behind" -eq 0 ]; then
+            echo "✅ Копия FPF свежая (последний коммит $age_days дн. назад)"
+        fi
+    fi
+    echo ""
+}
+
+report_fpf_copy_state
+
 if [ $UPD_FAIL -gt 0 ]; then
     echo "**Вердикт раздела:** ❌ $UPD_FAIL критичных предусловия не выполнены — \`update.sh\` упадёт без них."
 elif [ $UPD_WARN -gt 0 ]; then
@@ -492,7 +791,7 @@ else
 fi
 echo ""
 
-# Учёт в итоговом exit code: critical-fail в update prereq поднимает CRITICAL_MISSING
+# Accounting in the final exit code: a critical fail in update prereq raises CRITICAL_MISSING
 if [ $UPD_FAIL -gt 0 ]; then
     CRITICAL_MISSING=$((CRITICAL_MISSING + UPD_FAIL))
 fi
@@ -500,14 +799,14 @@ if [ $UPD_WARN -gt 0 ]; then
     OPTIONAL_MISSING=$((OPTIONAL_MISSING + UPD_WARN))
 fi
 
-# ---------- Раздел 6: Cross-platform path leaks (WP-5/WP-7 Stability-4) ----------
+# ---------- Section 6: Cross-platform path leaks (WP-5/WP-7 Stability-4) ----------
 #
-# Детектор: на Linux-сервере не должно быть macOS-путей `/Users/...` или
-# slug `{{CLAUDE_PROJECT_SLUG}}` в systemd-юнитах, конфигах, env-файлах.
-# Источник: 12 мая 2026, MEMORY_SRC в template-sync.sh указывал на macOS slug
-# на Linux-сервере → молчаливый WARN: Source not found каждую ночь.
+# Detector: a Linux server must not have macOS paths `/Users/...` or
+# the slug `{{CLAUDE_PROJECT_SLUG}}` in systemd units, configs, env files.
+# Source: 12 May 2026, MEMORY_SRC in template-sync.sh pointed to the macOS slug
+# on a Linux server → a silent WARN: Source not found every night.
 #
-# Запускается ТОЛЬКО на Linux. На macOS — пропускается (paths нормальны).
+# Runs ONLY on Linux. On macOS it is skipped (paths are normal).
 
 echo "## 6. Cross-platform path leaks"
 echo ""
@@ -520,7 +819,7 @@ else
     LEAK_COUNT=0
     LEAK_LOCATIONS=""
 
-    # Места поиска (общие точки конфигурации). Шаблоны утечек — в grep ниже.
+    # Search locations (common configuration points). Leak patterns are in the grep below.
     LEAK_TARGETS="
 /etc/systemd/system
 /etc/iwe
@@ -561,18 +860,18 @@ $IWE_ROOT/.claude
 fi
 echo ""
 
-# ---------- Раздел 7: Repo permissions integrity (WP-5/WP-7 Stability-4b) ----------
+# ---------- Section 7: Repo permissions integrity (WP-5/WP-7 Stability-4b) ----------
 #
-# Детектор: файлы в .git/objects/ должны быть owned пользователем, который запускает
-# pull/commit. Если в результате ssh-as-root операции (или sudo без -u) появились
-# root-owned объекты — последующий pull под обычным юзером падает с
+# Detector: files in .git/objects/ must be owned by the user who runs
+# pull/commit. If an ssh-as-root operation (or sudo without -u) produced
+# root-owned objects — a subsequent pull under a regular user fails with
 # "insufficient permission for adding an object to repository database".
 #
-# Источник: 11→12 мая 2026, dirty pull-repos warnings на tsekh-1 — корень оказался
-# в root-owned .git/objects после ssh-as-root команд из mac.
+# Source: 11→12 May 2026, dirty pull-repos warnings on the pilot's remote server — the root cause turned out to be
+# root-owned .git/objects after ssh-as-root commands from the mac.
 #
-# Релевантно для Linux (где ssh может ходить под разными user). На macOS обычно
-# всё под одним юзером — пропускаем.
+# Relevant for Linux (where ssh may go under different users). On macOS usually
+# everything is under one user — skip.
 
 echo "## 7. Repo permissions integrity"
 echo ""
@@ -592,7 +891,7 @@ else
         repo="${repo_git%/.git}"
         repo_name="${repo#$IWE_ROOT/}"
         set +e
-        # find -not -user может не работать на NixOS если whoami не в /etc/passwd
+        # find -not -user may not work on NixOS if whoami is not in /etc/passwd
         FOREIGN=$(find "$repo_git" -not -user "$EXPECTED_USER" 2>/dev/null | head -5)
         set -e
         if [ -n "$FOREIGN" ]; then
@@ -613,9 +912,67 @@ else
 fi
 echo ""
 
+# ---------- 8. Capabilities (WP-7 F267 stage 1) ----------
+#
+# Reads what scripts/iwe-capabilities.sh recorded; it checks nothing itself, so the
+# audit and the scripts can never disagree about the same fact. Written at install
+# and update, or by hand: bash scripts/iwe-capabilities.sh probe.
+
+echo "## 8. Возможности установки"
+echo ""
+
+# shellcheck source=lib/iwe-capabilities.sh
+source "$SCRIPT_DIR/lib/iwe-capabilities.sh"
+if [ "$(cap_status os)" = "unknown" ]; then
+    echo "_Возможности ещё не определены. Определить: \`bash scripts/iwe-capabilities.sh probe\` (то же делают установка и обновление)._"
+else
+    echo "| Возможность | Состояние | Значение | Проверено |"
+    echo "|---|---|---|---|"
+    for cap_name in $CAP_NAMES; do
+        printf '| %s | %s | %s | %s |\n' "$cap_name" "$(cap_status "$cap_name")" \
+            "$(cap_field "$cap_name" value 2>/dev/null || true)" "$(cap_field "$cap_name" checked_at 2>/dev/null || true)"
+    done
+    echo ""
+    case "$(cap_status backup)" in
+        undecided)
+            # A yellow line, not a counted warning: "undecided" must not turn the audit's
+            # exit code into an alarm for every install that never chose a backup.
+            echo "⚠️ Бэкап не решён: в \`params.yaml\` нет \`backup_dir\`, а iCloud по умолчанию есть только на macOS. Это не влияет на код выхода аудита. Включить: задайте \`backup_dir\`; отказаться явно: \`backup_enabled: false\`."
+            ;;
+        configured)
+            echo "✅ Бэкап настроен: цель — \`${IWE_ICLOUD_BACKUP_DIR:-}\`."
+            ;;
+        off)
+            echo "ℹ️ Бэкап выключен явно (\`backup_enabled: false\`)."
+            ;;
+    esac
+fi
+# Stage 2: the engine of the backup contract and what disappeared. Read from params.yaml and
+# from the recorded facts, so they show even before the first probe. Yellow lines only: they
+# never change the audit's exit code.
+case "$(cap_backup_engine)" in
+    invalid)
+        echo "⚠️ Недопустимое значение \`backup_engine\` в \`params.yaml\`: допустимо \`tar\` (по умолчанию) или \`restic\`. Бэкап не запустится, пока значение не исправлено. Это не влияет на код выхода аудита."
+        ;;
+    restic)
+        echo "ℹ️ Движок бэкапа: restic (защитное хранилище \`~/.iwe-backup/protect-repo\`)."
+        if [ -n "$(cap_backup_dir_param)" ]; then
+            echo "ℹ️ \`backup_dir\` относится к архивам tar и для restic не используется: снимки пишутся в защитное хранилище, не в \`backup_dir\`."
+        fi
+        ;;
+    tar)
+        [ "$(cap_status backup)" = configured ] && echo "ℹ️ Движок бэкапа: tar (архивы в \`backup_dir\` или в iCloud на macOS)."
+        ;;
+esac
+cap_regressions | while read -r reg_name reg_was reg_status; do
+    [ -n "$reg_name" ] || continue
+    echo "⚠️ Пропала возможность \`$reg_name\` (была: $reg_was, сейчас: $reg_status). Это не влияет на код выхода аудита."
+done
+echo ""
+
 # ---------- Exit code ----------
 
-# 2 = критичные gaps; 1 = warnings; 0 = ОК
+# 2 = critical gaps; 1 = warnings; 0 = OK
 if [ $CRITICAL_MISSING -ge 1 ]; then
     exit 2
 fi

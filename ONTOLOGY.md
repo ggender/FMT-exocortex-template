@@ -49,7 +49,7 @@
 | Ритуал ОРЗ | ORZ Ritual | Реализация протокола сессии: Открытие → Работа → Закрытие | DP.M.003 |
 | WP Gate | WP Gate | Блокирующая проверка наличия РП в плане перед началом работы | DP.EXOCORTEX.001 |
 | Capture-to-Pack | Capture-to-Pack | Рубежная проверка: есть ли знание для записи в Pack | DP.M.001 |
-| АрхГейт (ЭМОГССБ) | ArchGate | Обязательная оценка архитектурного решения по 7 характеристикам, порог ≥8 | DP.M.005 |
+| АрхГейт (ЭМОГССБ) | ArchGate | Обязательная оценка архитектурного решения по 7 характеристикам (вето-фильтр, без агрегатного балла) | DP.M.005 |
 | Стратегический хаб | Strategy Hub | DS-strategy — governance-репо для планов, ревью, сессий | DP.ROLE.012 |
 | Placeholder-переменная | Placeholder Variable | `{{VAR}}` — подставляется setup.sh при развёртывании шаблона | — (реализационное) |
 | Контракт роли | Role Contract | role.yaml + промпты + скрипты в roles/<name>/ | DP.ROLE.001 |
@@ -76,7 +76,7 @@
 | WP | Рабочий продукт | Work Product | SPF |
 | IPO | Вход-Обработка-Выход | Input-Processing-Output | SPF |
 | DP | Цифровая платформа | Digital Platform | Pack |
-| IWE | Среда интеллектуальной работы | Intellect Work Environment | Pack |
+| IWE | Среда интеллектуальной работы | Intellectual Work Environment | Pack |
 | MCP | Протокол контекста модели | Model Context Protocol | Pack |
 | ОРЗ | Открытие-Работа-Закрытие | Open-Work-Close | Pack |
 | РП | Рабочий продукт (экземпляр) | Work Product (instance) | Pack |

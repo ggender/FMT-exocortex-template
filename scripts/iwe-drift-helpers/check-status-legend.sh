@@ -1,36 +1,38 @@
 #!/usr/bin/env bash
-# check-status-legend.sh — детектор рассогласования легенды статусов WP и format compliance в REGISTRY
-# Owner: WP-217 (механизм sync). Активирован WP-267 (child) после bug в linear-sync.sh 25 апр.
-# Принцип: детектор отчитывается, не правит (см. iwe-drift.sh:11).
+# check-status-legend.sh — detector of mismatch between the WP status legend and format compliance in REGISTRY
+# Owner: WP-217 (sync mechanism). Activated by WP-267 (child) after the bug in linear-sync.sh on 25 Apr.
+# Principle: the detector reports, does not fix (see iwe-drift.sh:11).
 #
-# Что проверяет (3 invariant'а):
-#   I1. **Legend completeness:** все статус-эмодзи, встречающиеся в таблице WP-REGISTRY.md,
-#       задокументированы в легенде вверху файла. Новый эмодзи без записи в легенде → DRIFT.
-#   I2. **Format compliance — active id:** строки с plain id `| <num> |` имеют active статус
-#       (НЕ из терминального множества {✅, 📦, ↗️}).
-#   I3. **Format compliance — terminal id:** строки с crossed id `| ~~<num>~~ |` имеют
-#       терминальный статус из {✅, 📦, ↗️}.
+# What it checks (3 invariants):
+#   I1. **Legend completeness:** all status emojis appearing in the WP-REGISTRY.md table
+#       are documented in the legend at the top of the file. A new emoji without a legend entry → DRIFT.
+#   I2. **Format compliance — active id:** rows with a plain id `| <num> |` have an active status
+#       (NOT from the terminal set {✅, 📦, ↗️, ❌}).
+#   I3. **Format compliance — terminal id:** rows with a crossed id `| ~~<num>~~ |` have a
+#       terminal status from {✅, 📦, ↗️, ❌}.
 #
-# I2 + I3 — invariant id-format ↔ status (см. .claude/rules/formatting.md «Таблицы с РП»).
-# Сломан = расхождение row-format и status, что ломает счётчики (linear-sync.sh, day-close.sh).
+# I2 + I3 — the id-format ↔ status invariant (see .claude/rules/formatting.md "Tables with WPs").
+# Broken = mismatch between row-format and status, which breaks counters (linear-sync.sh, day-close.sh).
 #
 # Usage:
-#   bash check-status-legend.sh                 # полный отчёт
-#   bash check-status-legend.sh --critical-only # только нарушения
+#   bash check-status-legend.sh                 # full report
+#   bash check-status-legend.sh --critical-only # violations only
 #   IWE_ROOT=/path bash check-status-legend.sh
 #
-# Не зависит от iwe-drift.sh — может быть запущен отдельно. Когда iwe-drift.sh научится
-# диспатчить `check: script:...` пары, он будет вызывать этот скрипт автоматически.
+# Does not depend on iwe-drift.sh — can be run separately. When iwe-drift.sh learns to
+# dispatch `check: script:...` pairs, it will call this script automatically.
 
 set -eu
 
-IWE_ROOT="${IWE_ROOT:-$HOME/IWE}"
+# Load unified environment: WORKSPACE_DIR, IWE_ROOT, IWE_SCRIPTS, etc.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../.claude/lib/iwe-env-bootstrap.sh" || exit 1
 REGISTRY="${REGISTRY:-$IWE_ROOT/${IWE_GOVERNANCE_REPO:-}/docs/WP-REGISTRY.md}"
 MODE="${MODE:-all}"
 
-# Терминальные статусы — закрытие РП. Источник: легенда WP-REGISTRY.md.
-# Изменение этого списка = архитектурное решение об эволюции lifecycle РП.
-TERMINAL_STATUSES=("✅" "📦" "↗️")
+# Terminal statuses — closing a WP. Source: the WP-REGISTRY.md legend.
+# Changing this list = an architectural decision about the evolution of the WP lifecycle.
+TERMINAL_STATUSES=("✅" "📦" "↗️" "❌")
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -49,18 +51,37 @@ if [ ! -f "$REGISTRY" ]; then
     exit 1
 fi
 
-# Извлечь множество эмодзи из легенды (таблица «| Статус | Расшифровка |»).
-# Возвращает по одному эмодзи на строку.
+# Extract the set of emojis from the legend.
+# Both shipped forms are supported: "Status | Explanation" and
+# "Emoji | Status | What it means". The header determines the emoji column.
+# Returns one emoji per line.
 extract_legend_emojis() {
     awk '
-        /^\| Статус \| Расшифровка \|/ { in_legend = 1; next }
+        function trim(value) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            return value
+        }
+        /^\|/ {
+            n = split($0, fields, "|")
+            if (in_legend == 0) {
+                for (i = 2; i < n; i++) {
+                    header = trim(fields[i])
+                    if (header == "Эмодзи") emoji_col = i
+                    if (header == "Расшифровка") has_description = 1
+                    if (header == "Статус") status_col = i
+                }
+                if (emoji_col > 0 || (status_col > 0 && has_description)) {
+                    if (emoji_col == 0) emoji_col = status_col
+                    in_legend = 1
+                    next
+                }
+            }
+        }
         in_legend && /^\|---/ { next }
         in_legend && /^\|/ {
-            # Поле 2 = эмодзи, между | и |
             n = split($0, fields, "|")
-            if (n >= 3) {
-                emoji = fields[2]
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", emoji)
+            if (n >= emoji_col) {
+                emoji = trim(fields[emoji_col])
                 if (emoji != "") print emoji
             }
             next
@@ -69,16 +90,33 @@ extract_legend_emojis() {
     ' "$REGISTRY"
 }
 
-# Извлечь множество эмодзи из колонки «Ст» в таблице WP (4-я колонка).
-# Возвращает по одному эмодзи на строку (с дубликатами — кому надо, тот фильтрует sort -u).
+# Extract the set of emojis from the "St"/"Status" column in the WP table.
+# The column is determined by the header: column order is a configurable part
+# of the registry, so a fixed index here gave false violations.
+# Returns one emoji per line (with duplicates — whoever needs it filters with sort -u).
 extract_table_emojis() {
     awk '
-        /^\|[[:space:]]*(~~)?[0-9]+/ {
-            # Колонка статуса = поле 5 (после header `| # | P | Название | Ст |`)
+        function trim(value) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            return value
+        }
+        /^\|/ {
             n = split($0, fields, "|")
-            if (n >= 5) {
-                status = fields[5]
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", status)
+            if (trim(fields[2]) == "#") status_col = 0
+            if (status_col == 0) {
+                for (i = 2; i < n; i++) {
+                    header = trim(fields[i])
+                    if (header == "Ст" || header == "Статус") {
+                        status_col = i
+                        next
+                    }
+                }
+            }
+        }
+        /^\|[[:space:]]*(~~)?[0-9]+/ {
+            n = split($0, fields, "|")
+            if (status_col > 0 && n >= status_col) {
+                status = trim(fields[status_col])
                 gsub(/~~/, "", status)
                 if (status != "") print status
             }
@@ -86,17 +124,34 @@ extract_table_emojis() {
     ' "$REGISTRY"
 }
 
-# Извлечь пары (id_format, status) для format compliance check.
-# id_format: "active" если plain `| 263 |`, "terminal" если crossed `| ~~263~~ |`.
+# Extract (id_format, status) pairs for the format compliance check.
+# id_format: "active" if plain `| 263 |`, "terminal" if crossed `| ~~263~~ |`.
 extract_id_status_pairs() {
     awk '
+        function trim(value) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            return value
+        }
+        /^\|/ {
+            n = split($0, fields, "|")
+            if (trim(fields[2]) == "#") status_col = 0
+            if (status_col == 0) {
+                for (i = 2; i < n; i++) {
+                    header = trim(fields[i])
+                    if (header == "Ст" || header == "Статус") {
+                        status_col = i
+                        next
+                    }
+                }
+            }
+        }
         /^\|[[:space:]]*(~~)?[0-9]+/ {
             n = split($0, fields, "|")
-            if (n < 5) next
+            if (status_col == 0 || n < status_col) next
             id_field = fields[2]
-            status_field = fields[5]
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", id_field)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", status_field)
+            status_field = fields[status_col]
+            id_field = trim(id_field)
+            status_field = trim(status_field)
             gsub(/~~/, "", status_field)
 
             if (match(id_field, /^~~[0-9]+~~$/)) {
@@ -113,7 +168,7 @@ extract_id_status_pairs() {
     ' "$REGISTRY"
 }
 
-# Множество терминальных статусов как regex
+# Set of terminal statuses as a regex
 is_terminal_status() {
     local s="$1"
     for t in "${TERMINAL_STATUSES[@]}"; do
@@ -124,7 +179,7 @@ is_terminal_status() {
     return 1
 }
 
-# Шаг 1: Legend completeness (I1)
+# Step 1: Legend completeness (I1)
 TMP_LEGEND=$(mktemp)
 TMP_TABLE=$(mktemp)
 TMP_VIOLATIONS=$(mktemp)
@@ -142,13 +197,13 @@ while IFS= read -r emoji; do
     fi
 done < "$TMP_TABLE"
 
-# Шаг 2 & 3: Format compliance (I2, I3)
+# Step 2 & 3: Format compliance (I2, I3)
 mismatch_count=0
 ok_count=0
 while IFS=$'\t' read -r wp_id id_format status; do
     [ -z "$wp_id" ] && continue
     if [ "$id_format" = "active" ]; then
-        # active id → status НЕ должен быть terminal
+        # active id → status must NOT be terminal
         if is_terminal_status "$status"; then
             printf "| I2 | active-id-with-terminal-status | WP-%s | id=plain но status=%s (terminal). Должно быть ~~%s~~ |\n" "$wp_id" "$status" "$wp_id" >> "$TMP_VIOLATIONS"
             mismatch_count=$((mismatch_count + 1))
@@ -156,7 +211,7 @@ while IFS=$'\t' read -r wp_id id_format status; do
             ok_count=$((ok_count + 1))
         fi
     elif [ "$id_format" = "terminal" ]; then
-        # terminal id → status ДОЛЖЕН быть terminal
+        # terminal id → status MUST be terminal
         if ! is_terminal_status "$status"; then
             printf "| I3 | terminal-id-with-active-status | WP-%s | id=~~%s~~ но status=%s (active). Раскрестить или сменить статус |\n" "$wp_id" "$wp_id" "$status" >> "$TMP_VIOLATIONS"
             mismatch_count=$((mismatch_count + 1))
@@ -166,7 +221,7 @@ while IFS=$'\t' read -r wp_id id_format status; do
     fi
 done < <(extract_id_status_pairs)
 
-# Шаг 4: вывод
+# Step 4: output
 echo "## WP-status legend drift report ($(date +%Y-%m-%d))"
 echo ""
 echo "Source: WP-267 child WP-217. Manifest pair: \`wp-status-legend-drift\`."
@@ -194,7 +249,7 @@ if [ -s "$TMP_VIOLATIONS" ]; then
     echo ""
 fi
 
-# Сводка
+# Summary
 echo "### Сводка"
 echo ""
 echo "- ✅ format-compliance OK: $ok_count"

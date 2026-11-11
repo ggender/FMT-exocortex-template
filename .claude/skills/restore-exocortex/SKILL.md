@@ -5,6 +5,7 @@ description: "Restore IWE memory from an exocortex backup on a new device or aft
 version: 1.0.0
 layer: L1
 status: active
+browser_safe: false
 triggers:
   slash: [/restore-exocortex]
   phrases: ["восстанови экзокортекс", "восстанови память", "восстановить exocortex", "restore exocortex", "подними память на новом устройстве"]
@@ -13,6 +14,10 @@ annotations:
   destructive: true
   interactive: true
 related: ["#125"]
+routing:
+  executor: script+judgment
+  deterministic: false
+  model_step: "Шаг 2 pre-flight: свежее устройство или населённая память, подтверждение пользователя перед --force; восстановление делает scripts/restore-from-exocortex.sh"
 ---
 
 # /restore-exocortex — Восстановление памяти из exocortex
@@ -23,9 +28,9 @@ related: ["#125"]
 
 ## Обещание (контракт)
 
-**Вход:** (опц.) путь к governance-репо. По умолчанию `$WORKSPACE_DIR/$GOVERNANCE_REPO` (`~/IWE/DS-strategy`).
-**Выход:** восстановленные `memory/` + `CLAUDE.md` + симлинк `memory/`; отчёт + напоминание перезапустить Claude Code.
-**Инвариант:** НЕ перезаписывает населённую `memory/` без явного подтверждения пользователя.
+**Вход:** (опц.) путь к governance-репо. По умолчанию `$WORKSPACE_DIR/$GOVERNANCE_REPO` (`${IWE_WORKSPACE:-$HOME/IWE}/DS-strategy`).
+**Выход:** восстановленные `memory/` + `extensions/` + `CLAUDE.md` + симлинк `memory/`; отчёт + напоминание перезапустить Claude Code.
+**Инвариант:** НЕ перезаписывает населённую `memory/` или `extensions/` без явного подтверждения пользователя.
 
 > **Оркестрация, не реализация.** Скилл судит (свежее устройство vs существующая инсталляция, резолв пути, подтверждение) и зовёт детерминированный примитив `scripts/restore-from-exocortex.sh`. Сам file-ops не делает. На голом терминале без агента используется скрипт напрямую — это bootstrap-путь (см. SETUP-GUIDE).
 

@@ -6,7 +6,7 @@
 
 ## Dry-run контракт (БЛОКИРУЮЩЕЕ для extensions)
 
-> **Полный контракт:** [memory/dry-run-contract.md](../memory/dry-run-contract.md). Когда `/audit-installation` smoke-тестит ритуал, он создаёт sentinel `/tmp/iwe-dry-run-${SESSION_ID}.flag` и ожидает, что **никто не пишет**.
+> **Полный контракт:** [memory/dry-run-contract.md](../memory/dry-run-contract.md). Когда `/audit-installation` smoke-тестит ритуал, он создаёт sentinel `/tmp/iwe-dry-run.flag` (единый файл, не session-bound — issue #237) и ожидает, что **никто не пишет**.
 
 PreToolUse-хук `dry-run-gate.sh` блокирует Write/Edit/git-write/MCP-write автоматически. Но **extensions, которые запускают собственный bash или вызывают exotic tools** (бинарные API, прямой psql) — могут обойти хук.
 
@@ -15,8 +15,7 @@ PreToolUse-хук `dry-run-gate.sh` блокирует Write/Edit/git-write/MCP-
 Если extension содержит write-логику (создание файла, INSERT в БД, отправка сообщения), **в начале** должна быть проверка sentinel:
 
 ```bash
-SID="${CLAUDE_SESSION_ID:-noid}"
-if [ -f "/tmp/iwe-dry-run-${SID}.flag" ]; then
+if [ -f "/tmp/iwe-dry-run.flag" ]; then
     echo "[extension <name>] dry-run active, skipping write steps"
     exit 0
 fi
@@ -36,7 +35,7 @@ fi
 - `<protocol>.<hook>.<suffix>.md` — модульный extension (несколько suffix-файлов на один hook, см. раздел [Несколько расширений одного hook](#несколько-расширений-одного-hook-конфликты-имён))
 
 Где:
-- `<protocol>` — имя протокола (`protocol-close`, `protocol-open`, `day-open`, `day-close`, `week-close`, `month-close`)
+- `<protocol>` — имя протокола или скилла (`protocol-close`, `protocol-open`, `day-open`, `day-close`, `week-close`, `month-close`, `iwe-update`, `verify`, `archgate`)
 - `<hook>` — точка вставки (`before`, `after`, `checks`)
 - `<suffix>` — произвольное имя модуля (например, `health`, `linear`, `slack`)
 
@@ -49,9 +48,12 @@ fi
 | `protocol-close` | `checks` | **ДО** Step 1 (commit+push) — pre-commit gate (R4.3 fix, WP-273) |
 | `protocol-close` | `after` | После основного чеклиста, перед верификацией |
 | `protocol-open` | `after` | После ритуала согласования |
+| `protocol-open` | `sync` | На шаге синхронизации; уточняет поведение синхронизации |
 | `day-open` | `before` | Перед шагом 1 (Вчера) — утренние ритуалы, подготовка |
 | `day-open` | `after` | После шага 6b (Требует внимания), перед записью DayPlan |
 | `day-open` | `checks` | После записи DayPlan, **ДО** git commit (БЛОКИРУЮЩЕЕ) |
+
+> **Два пути исполнения `day-open.*.md` (WP-529 Ф11).** Интерактивный скилл (`day-open/SKILL.md`) читает и исполняет файл как агент — `load-extensions.sh` + `Read`. Автономный конвейер `scripts/day-open-pipeline.sh` (launchd/cron, LLM в цикле нет физически) исполняет **те же файлы** через `scripts/day-open-hooks-runner.sh`: извлекает и `eval`ит каждый ```` ```bash ```` блок механически — тот же приём, что уже был у `checks` (`day-open-checks-runner.sh`). Отсюда правило: содержимое `day-open.before.md`/`day-open.after.md`/`day-open.checks*.md` должно быть исполняемым bash-блоком, а не прозой для LLM — иначе конвейер честно упадёт «извлечено 0 bash-блоков» на автономном прогоне. Неуспешный `before`/`after`/`checks`-хук блокирует commit конвейера целиком (может мутировать состояние до commit — тихий WARN рисковал бы закоммитить половинчатый результат).
 | `day-close` | `before` | Перед шагом 1 |
 | `day-close` | `checks` | После governance batch, перед архивацией |
 | `day-close` | `after` | После итогов дня, перед верификацией |
@@ -59,6 +61,32 @@ fi
 | `week-close` | `after` | После аудита memory (шаг 4), перед финализацией |
 | `month-close` | `before` | Перед сбором данных |
 | `month-close` | `after` | После итогов месяца, перед записью |
+| `strategy-session` | `before` | Перед началом стратегической сессии |
+| `strategy-session` | `after` | После итогов стратегической сессии |
+| `iwe-update` | `before` | До превью и применения обновления |
+| `iwe-update` | `checks` | После применения, до успешного итогового отчёта |
+| `iwe-update` | `after` | После итогового отчёта об обновлении |
+| `verify` | `before` | До выбора типа и запуска проверки |
+| `verify` | `checks` | После основной проверки, до итогового verdict |
+| `verify` | `after` | После показа итогового verdict |
+| `archgate` | `before` | До принципов и начала архитектурной оценки; ошибка блокирует старт |
+| `archgate` | `checks` | После DRR, до единственной публикации вердикта; ошибка блокирует публикацию |
+| `archgate` | `after` | После публикации; ошибка только предупреждает и не меняет вердикт |
+
+**Контракт исхода АрхГейта:** `archgate.before` и `archgate.checks` завершаются
+маркером `ARCHGATE_EXTENSION: PASS` либо
+`ARCHGATE_EXTENSION: BLOCK — <причина>`. `BLOCK` — содержательное возражение,
+а поломка loader/исполнения — отдельная ошибка; оба исхода блокируют продолжение.
+Для `archgate.after` используйте `ARCHGATE_EXTENSION: WARN — <причина>`:
+эта фаза только предупреждает и не меняет опубликованный вердикт.
+Расширению запрещено снова запускать lifecycle АрхГейта через
+`load-extensions.sh archgate ...`: loader возвращает `BLOCK` для `before/checks`
+и `WARN` для `after`. При смешанном наборе повреждённый или рекурсивный
+`archgate.after` пропускается, а все корректные `after`-файлы выполняются.
+
+Имя всегда включает hook. Например, `extensions/verify.md` не вызывается;
+используйте `extensions/verify.before.md`, `verify.checks.md` или
+`verify.after.md`.
 
 ### Пример: рефлексия дня
 
@@ -166,7 +194,7 @@ cp my-extension-pack/extensions/* ~/IWE/extensions/
 |---------|-----|---------|
 | без префикса | Платформенные (зарезервированы) | `iwe-knowledge` (Gateway, агрегирует knowledge + digital-twin) |
 | `ext-*` | Вендорские | `ext-google-calendar`, `ext-linear`, `ext-slack` |
-| `<ваш префикс>-*` | Ваши MCP | `tseren-notes`, `tseren-obsidian` |
+| `<ваш префикс>-*` | Ваши MCP | `<ваш-префикс>-notes`, `<ваш-префикс>-obsidian` |
 
 Используйте свой уникальный префикс (например username) — это предотвращает конфликты при обновлениях.
 
@@ -198,6 +226,12 @@ cp my-extension-pack/extensions/* ~/IWE/extensions/
 После `update.sh` эти серверы появятся в `.mcp.json`. Требуется `jq` (`brew install jq`).
 
 **Важно:** `update.sh` не трогает `extensions/mcp-user.json` — ваши MCP в безопасности при обновлениях.
+
+### Образец: Railway
+
+Раньше шаблон сам ставил сервер `ext-railway`, но его команда вела на скрипт-обёртку, которого у пользователей нет, и сервер падал при каждом запуске. Теперь Railway подключается только вручную, по образцу `extensions/mcp-railway.json.sample`. Сам образец ни установка, ни обновление не читают. Перенесите блок `ext-railway` в `extensions/mcp-user.json` и укажите путь к своему скрипту, который запускает MCP-сервер Railway с вашим токеном.
+
+При обновлении `update.sh` убирает из `.mcp.json` старую шаблонную запись railway, если её скрипта нет на месте. Запись, которую вы описали в `extensions/mcp-user.json`, вливается обратно.
 
 ## Фильтрация контекста Kimi (.agentigore)
 
